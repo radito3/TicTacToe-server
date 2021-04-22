@@ -1,0 +1,23 @@
+The server endpoints will be:
+
+- POST /search {id, ip_address} -> {search_id}
+- GET /search/<search_id> -> {game_id}
+- GET /games/<game_id> -> {game_board, player_turn, player_1, player_2} [DEBUG ENDPOINT]
+- [later on] POST /stop/<game_id>
+
+when receiving the POST /search request, the server will check if there are active searches
+-> if there are, it adds the player to a "lobby" and removes the active search
+-> if not, it creates an active search with the player
+
+the GET /search/<search_id> request will return either an empty json, if there is no lobby with the requesting player,
+or the game id, if there is
+Additionaly, when both players of a lobby get the game id, the lobby is deleted and the server will spawn a thread,
+initiate a GameSession and add it to a map of active game sessions
+
+[later on] added functionality to quit the game -> if a player quits, the game will end
+
+[later on] when both players consecutively don't input any commands for 2(or 3) times, the game will end
+
+[later on] resilliency agains signal loss:
+- if a connection to a player can't be established within 1 min, the game will end
+- if a connection is slow for 3 consecutive gRPC calls, lower the packet size (if possible)
