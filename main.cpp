@@ -37,6 +37,46 @@ public:
     }
 };
 
+void handle_connection(int connfd, struct sockaddr_in connaddr) {
+    //these will be used for creating the gRPC stubs
+      char *connection_address = inet_ntoa(connaddr.sin_addr);
+      unsigned short connection_port = connaddr.sin_port;
+
+      std::stringstream packets;
+      ssize_t bytes_received = -1;
+      char packet[1024]; //TODO make the packet size configurable
+      memset(packet, '0', sizeof(packet));
+
+      //recv
+      //parse
+      //compute
+      //send
+      while ((bytes_received = recv(connfd, (void *) packet, 1024, 0)) != -1) {
+          if (bytes_received == 0) { //EOF
+              break;
+          }
+          packets << packet;
+      }
+      check_err(recv);
+
+      http_request request = parse_http_request(packets);
+      http_response response = handle_request(request);
+      char* response_str = response.to_c_str();
+      size_t response_size = strlen(response_str);
+
+      ssize_t bytes_sent = -1;
+      while ((bytes_sent = send(connfd, (void *) response_str, response_size, 0)) > 0) {
+          if (bytes_sent < response_size) {
+              response_str += bytes_sent;
+              response_size -= bytes_sent;
+          }
+      }
+      check_err(send);
+
+      close(connfd);
+      check_err(close);
+}
+
 http_request parse_http_request(std::stringstream& packets) {
 
     return http_request();
@@ -96,43 +136,8 @@ int main() {
                 break;
         }
 
-        //these will be used for creating the gRPC stubs
-        char *connection_address = inet_ntoa(connaddr.sin_addr);
-        unsigned short connection_port = connaddr.sin_port;
-
-        std::stringstream packets;
-        ssize_t bytes_received = -1;
-        char packet[1024]; //TODO make the packet size configurable
-        memset(packet, '0', sizeof(packet));
-
-        //recv
-        //parse
-        //compute
-        //send
-        while ((bytes_received = recv(connfd, (void *) packet, 1024, 0)) != -1) {
-            if (bytes_received == 0) { //EOF
-                break;
-            }
-            packets << packet;
-        }
-        check_err(recv);
-        
-        http_request request = parse_http_request(packets);
-        http_response response = handle_request(request);
-        char* response_str = response.to_c_str();
-        size_t response_size = strlen(response_str);
-
-        ssize_t bytes_sent = -1;
-        while ((bytes_sent = send(connfd, (void *) response_str, response_size, 0)) > 0) {
-            if (bytes_sent < response_size) {
-                response_str += bytes_sent;
-                response_size -= bytes_sent;
-            }
-        }
-        check_err(send);
-
-        close(connfd);
-        check_err(close);
+        //preferably spawn a new thread to handle the connection
+        handle_connection(connfd, connaddr);
     }
 
     if (close(sockfd) != 0) {
