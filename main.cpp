@@ -66,10 +66,11 @@ void handle_connection(int connfd, struct sockaddr_in connaddr) {
 
       ssize_t bytes_sent = -1;
       while ((bytes_sent = send(connfd, (void *) response_str, response_size, 0)) > 0) {
-          if (bytes_sent < response_size) {
-              response_str += bytes_sent;
-              response_size -= bytes_sent;
+          if (bytes_sent >= response_size) {
+              break;
           }
+          response_str += bytes_sent;
+          response_size -= bytes_sent;
       }
       check_err(send);
 
