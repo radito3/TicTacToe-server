@@ -1,5 +1,5 @@
 #include <sstream>
-#include <vector>
+#include <map>
 
 #include <string.h>
 #include <unistd.h>
@@ -12,7 +12,7 @@ class http_request {
     std::string_view http_method;
     std::string_view url;
     std::string_view protocol;
-    std::vector<std::string_view> headers;
+    std::multimap<std::string_view, std::string_view> headers;
 
     std::string_view body;
 };
@@ -21,7 +21,7 @@ class http_response {
     std::string_view protocol;
     unsigned short status_code;
     std::string_view status_code_text;
-    std::vector<std::string_view> headers;
+    std::multimap<std::string_view, std::string_view> headers;
 
     std::string_view body;
 
