@@ -12,5 +12,7 @@ WORKDIR /opt/hello-world
 
 COPY --from=build /src/TicTacToe_server ./
 
+EXPOSE 80
+
 CMD ["./TicTacToe_server"]
 
