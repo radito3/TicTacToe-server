@@ -4,6 +4,7 @@
 #include <chrono>
 #include <functional>
 #include <thread>
+#include <vector>
 
 //thread pool should have a rw_lock (a shared_mutex with a shared_lock for read and unique_lock for write)
 class ThreadPool {
@@ -22,11 +23,17 @@ public:
 private:
     //fields...
     unsigned num_active_threads = 0;
+    //FIXME temporary impl
+    std::vector<std::thread> threads;
 
 public:
     explicit ThreadPool(ThreadPool::Config config = {}) {} //TODO implement
 
     ~ThreadPool() {
+        //FIXME temporary impl
+        for (auto& th : threads) {
+            th.join();
+        }
         //close active connections
         //reject pending connections
         //send shutdown signal
@@ -35,7 +42,7 @@ public:
 
     bool submit_job(std::function<void()>&& job) {
         //FIXME temporary impl
-        std::thread(std::forward<std::function<void()>>(job)).detach();
+        threads.emplace_back(std::forward<std::function<void()>>(job));
         //if accepted
         return true;
         //if rejected

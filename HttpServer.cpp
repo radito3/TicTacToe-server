@@ -40,8 +40,8 @@ void log(Args&&... args) {
 
 HttpServer::HttpServer(HttpServer::Config server_config)
     : packet_size(server_config.packet_size),
-    socket_connection_queue_size(server_config.socket_connection_queue_size),
-    connection_handlers_pool(server_config.th_pool_config)
+      socket_connection_queue_size(server_config.socket_connection_queue_size),
+      connection_pool(server_config.th_pool_config)
 {
     create_tcp_socket();
     bind_socket();
@@ -62,7 +62,7 @@ void HttpServer::start() {
 
     while (true) {
         auto [connection_fd, connection_address] = accept_connection();
-        if (connection_fd == -1) {
+        if (connection_fd < 0) {
             continue;
         }
         std::stringstream packets;
@@ -71,19 +71,23 @@ void HttpServer::start() {
 
         auto handler = find_request_handler(request);
         if (handler == handlers.end()) {
-            //TODO send 404 Not Found
+            send_response_to_socket(connection_fd, HttpResponse::new_builder()
+                                                    .status(404)
+                                                    .build());
             continue;
         }
 
-        bool accepted = connection_handlers_pool.submit_job(HandleConnectionJob(connection_fd, *handler, request));
+        bool accepted = connection_pool.submit_job(HandleConnectionJob(connection_fd, *handler, request));
         if (!accepted) {
-            //TODO send 503 Service Unavailable
+            send_response_to_socket(connection_fd, HttpResponse::new_builder()
+                                                    .status(503)
+                                                    .build());
         }
     }
 }
 
-void HttpServer::register_connection_handler(const RequestMatcher &matcher,
-                                             std::function<HttpResponse(const HttpRequestContext &)> handler) {
+void HttpServer::register_handler(const RequestMatcher &matcher,
+                                  std::function<HttpResponse(const HttpRequestContext &)> handler) {
     handlers.insert({matcher, std::move(handler)});
 }
 
@@ -114,37 +118,35 @@ std::pair<int, struct sockaddr_in> HttpServer::accept_connection() {
     socklen_t connlen;
     int connfd = accept(socket_fd, (struct sockaddr*) &connaddr, &connlen);
 
-    if (connfd >= 0)
+    if (connfd >= 0) {
         log("Connection established");
-
-    switch (connfd) {
-        case EINTR:
-        case ECONNABORTED:
-            return {-1, connaddr};
-        case ENOBUFS:
-        case ENOMEM:
-        case EPERM:
-            throw socket_exception("Error accepting connection: " + std::string(strerror(errno)));
-        default:
-            break;
+    } else {
+        switch (connfd) {
+            case ENOBUFS:
+            case ENOMEM:
+            case EPERM:
+                throw socket_exception("Error accepting connection: " + std::string(strerror(errno)));
+            case EINTR:
+            case ECONNABORTED:
+            default:
+                return {-1, connaddr};
+        }
     }
     return {connfd, connaddr};
 }
 
 HttpRequest HttpServer::parse_http_request(std::istream &packets) {
+    std::string http_method;
+    packets >> http_method;
+    HttpMethod method = parse_http_method(http_method);
+
+    std::string url;
+    packets >> url;
+
+    std::string protocol;
+    packets >> protocol;
+
     std::string line;
-    std::getline(packets, line);
-
-    std::regex space(R"( )");
-    std::vector<std::string> elems(std::sregex_token_iterator(line.begin(), line.end(), space, -1),
-                                   std::sregex_token_iterator());
-    if (elems.size() != 3) {
-        throw std::runtime_error("Invalid HTTP request");
-    }
-    HttpMethod method = parse_http_method(elems[0]);
-    std::string url = elems[1];
-    std::string protocol = elems[2];
-
     std::multimap<std::string_view, std::string_view> headers;
     std::getline(packets, line);
     while (!line.empty()) {
@@ -208,7 +210,7 @@ auto HttpServer::find_request_handler(const HttpRequest &request) -> handlers_ma
     for (auto& [matcher, handler] : handlers) {
         std::string matcher_path(matcher.path);
         if (matcher_path.find('{') != std::string::npos) {
-            matcher_path = std::regex_replace(matcher_path, std::regex(R"({\w+})"), R"(\w+)");
+            matcher_path = std::regex_replace(matcher_path, std::regex(R"({\w+})"), R"([-\w\d_]+)");
         }
 
         if (std::regex_match(path, std::regex(matcher_path))) {
@@ -262,38 +264,7 @@ void HttpServer::add_mandatory_headers_to_response(HttpResponse &response) {
     }
 }
 
-std::unordered_map<std::string_view, std::string_view> extract_path_params(const RequestMatcher& matcher) {
-
-    return {};
-}
-
-std::multimap<std::string_view, std::string_view> extract_query_params(const RequestMatcher& matcher) {
-
-    return {};
-}
-
-std::multimap<std::string_view, std::string_view> extract_fragment_params(const RequestMatcher& matcher) {
-
-    return {};
-}
-
-HttpServer::HandleConnectionJob::HandleConnectionJob(
-        int connection_fd,
-        const std::pair<RequestMatcher, std::function<HttpResponse(const HttpRequestContext &)>>& pair,
-        const HttpRequest& request)
-        : connection_fd(connection_fd), pair(pair),
-        request_context(request.headers,
-                        extract_path_params(pair.first),
-                        extract_query_params(pair.first),
-                        extract_fragment_params(pair.first),
-                        request.body) {}
-
-void HttpServer::HandleConnectionJob::operator()() {
-    //these will be used for creating the gRPC stubs
-//    char *connection_address = inet_ntoa(connaddr.sin_addr);
-//    unsigned short connection_port = connaddr.sin_port;
-
-    HttpResponse response = pair.second(request_context);
+void HttpServer::send_response_to_socket(int connection_fd, HttpResponse response) {
     add_mandatory_headers_to_response(response);
     char* response_str = response.to_c_str();
     size_t response_size = strlen(response_str);
@@ -314,4 +285,78 @@ void HttpServer::HandleConnectionJob::operator()() {
     close(connection_fd);
     check_err(close);
     log("Connection closed");
+}
+
+void remove_leading_trailing_slash(std::string& path) {
+    if (path.find('/') == 0) {
+        path.erase(path.begin());
+    }
+    if (path.rfind('/') == path.size() - 1) {
+        path.erase(--path.end());
+    }
+}
+
+std::unordered_map<std::string_view, std::string_view> extract_path_params(const RequestMatcher& matcher,
+                                                                           const HttpRequest& request) {
+    //matcher: /path/{arg1}/{arg2}
+    //url:     /path/abc/def
+    if (matcher.path.find('{') == std::string_view::npos) {
+        return {};
+    }
+    std::string matcher_path(matcher.path);
+    remove_leading_trailing_slash(matcher_path);
+    std::string request_url(request.url);
+    remove_leading_trailing_slash(request_url);
+
+    std::regex slash("/");
+    std::vector<std::string> path_elems(std::sregex_token_iterator(matcher_path.begin(), matcher_path.end(), slash, -1),
+                                        std::sregex_token_iterator());
+    std::vector<std::string> url_elems(std::sregex_token_iterator(request_url.begin(), request_url.end(), slash, -1),
+                                       std::sregex_token_iterator());
+    std::unordered_map<std::string_view, std::string_view> path_params;
+    for (int i = 0; i < path_elems.size(); ++i) {
+        if (path_elems[i].find('{') == std::string::npos) {
+            continue;
+        }
+        path_params.insert({path_elems[i].substr(1, path_elems[i].size() - 1), url_elems[i]});
+    }
+
+    return {};
+}
+
+std::multimap<std::string_view, std::string_view> extract_query_params(const HttpRequest& request) {
+    // /path?a=b&d=c or /path?a=b;b=c or /path?a
+    return {};
+}
+
+std::vector<std::string_view> extract_fragment_params(const HttpRequest& matcher) {
+    // /path#abc
+    return {};
+}
+
+HttpServer::HandleConnectionJob::HandleConnectionJob(int connection_fd, const handlers_map::value_type &pair,
+                                                     const HttpRequest& request)
+        : connection_fd(connection_fd), pair(pair),
+        request_context(request.headers,
+                        extract_path_params(pair.first, request),
+                        extract_query_params(request),
+                        extract_fragment_params(request),
+                        request.body) {}
+
+void HttpServer::HandleConnectionJob::operator()() {
+    //these will be used for creating the gRPC stubs
+    //TODO add them to query map?
+//    char *connection_address = inet_ntoa(connaddr.sin_addr);
+//    unsigned short connection_port = connaddr.sin_port;
+
+    HttpResponse response;
+    try {
+        response = pair.second(request_context);
+    } catch (const std::runtime_error& e) {
+        response = HttpResponse::new_builder()
+                    .status(500)
+                    .body(e.what())
+                    .build();
+    }
+    send_response_to_socket(connection_fd, response);
 }

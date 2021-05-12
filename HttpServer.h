@@ -32,7 +32,7 @@ private:
     using handlers_map = std::unordered_map<RequestMatcher, std::function<HttpResponse(const HttpRequestContext &)>>;
     handlers_map handlers;
 
-    ThreadPool connection_handlers_pool;
+    ThreadPool connection_pool;
 
 public:
     explicit HttpServer(HttpServer::Config server_config = {});
@@ -41,24 +41,17 @@ public:
 
     void start();
 
-    void register_connection_handler(const RequestMatcher&, std::function<HttpResponse(const HttpRequestContext &)>);
+    void register_handler(const RequestMatcher&, std::function<HttpResponse(const HttpRequestContext &)>);
 
 private:
     class HandleConnectionJob {
         int connection_fd;
-        std::pair<RequestMatcher, std::function<HttpResponse(const HttpRequestContext &)>> pair;
+        handlers_map::value_type pair;
         HttpRequestContext request_context;
 
     public:
-        HandleConnectionJob(int,
-                            const std::pair<RequestMatcher, std::function<HttpResponse(const HttpRequestContext &)>>&,
-                            const HttpRequest&);
+        HandleConnectionJob(int, const handlers_map::value_type&, const HttpRequest&);
 
-        //TODO invoke lambda
-        // create http response
-        // add mandatory headers
-        // send to socket
-        // close connection
         void operator()();
     };
 
@@ -77,7 +70,8 @@ private:
     auto find_request_handler(const HttpRequest&) -> handlers_map::iterator;
 
     static void add_mandatory_headers_to_response(HttpResponse &);
-};
 
+    static void send_response_to_socket(int, HttpResponse);
+};
 
 #endif //TICTACTOE_SERVER_HTTPSERVER_H

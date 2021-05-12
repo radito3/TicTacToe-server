@@ -6,14 +6,14 @@
 class HttpResponse {
 public:
     class Builder {
-        unsigned int status_code = -1;
+        unsigned short status_code = 0;
         std::multimap<std::string_view, std::string_view> headers;
         std::string_view body_;
 
         friend class HttpResponse;
 
     public:
-        Builder& status(unsigned int sc) {
+        Builder& status(unsigned short sc) {
             status_code = sc;
             return *this;
         }
@@ -48,7 +48,7 @@ public:
         }
 
         HttpResponse build() const {
-            if (status_code == -1) {
+            if (status_code == 0) {
                 throw std::runtime_error("Incomplete HTTP response: Status Code missing");
             }
             return HttpResponse(*this);
@@ -56,9 +56,7 @@ public:
     };
 
 private:
-
     unsigned short status_code;
-    std::string_view status_code_text;
     std::multimap<std::string_view, std::string_view> headers;
 
     std::string_view body;
@@ -71,7 +69,7 @@ private:
     }
 
 public:
-    HttpResponse() = delete;
+    HttpResponse() : status_code(0) {};
 
     static HttpResponse::Builder new_builder() {
         return HttpResponse::Builder();
@@ -86,8 +84,11 @@ public:
     }
 
     char* to_c_str() const {
+        if (status_code == 0) {
+            throw std::runtime_error("Incomplete HTTP response: Status Code missing");
+        }
         std::stringstream res;
-        res << "HTTP/1.1" << status_code << ' ' << status_code_text << std::endl;
+        res << "HTTP/1.1 " << status_code << ' ' << parse_status_code(status_code) << std::endl;
         for (const auto& [header_key, header_val] : headers) {
             res << header_key << ": " << header_val << std::endl;
         }
@@ -101,6 +102,27 @@ public:
         char* result = new char[data_len];
         std::copy(data, data + data_len, result);
         return result;
+    }
+
+private:
+    static std::string_view parse_status_code(unsigned short status_code) {
+        switch (status_code) {
+            case 200:
+                return "OK";
+            case 201:
+                return "Created";
+            case 202:
+                return "Accepted";
+            case 404:
+                return "Not Found";
+            case 500:
+                return "Internal Server Error";
+            case 503:
+                return "Service Unavailable";
+            //...
+            default:
+                throw std::runtime_error("Unsupported status code: " + std::to_string(status_code));
+        }
     }
 };
 

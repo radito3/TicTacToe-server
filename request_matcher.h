@@ -10,11 +10,9 @@ struct RequestMatcher {
     const std::string_view path;
 
     RequestMatcher(const HttpMethod method, const std::string_view &path) : method(method), path(path) {
-        if (path.find('?') != std::string_view::npos) {
-            throw std::runtime_error("Path matcher can't contain query params");
-        }
-        if (path.find('#') != std::string_view::npos) {
-            throw std::runtime_error("Path matcher can't contain fragment params");
+        if (path.find('?') != std::string_view::npos
+            || path.find('#') != std::string_view::npos) {
+            throw std::runtime_error("Path matcher can't contain query or fragment params");
         }
     }
 
