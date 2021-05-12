@@ -18,7 +18,7 @@ struct RequestMatcher {
 
     std::string normalize_path() const {
         std::string result(path);
-        if (!path.starts_with('/')) {
+        if (*path.begin() != '/') {
             result = "/" + result;
         }
         if (result.find('{') == std::string::npos) {
