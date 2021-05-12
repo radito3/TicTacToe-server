@@ -161,6 +161,9 @@ HttpRequest HttpServer::parse_http_request(std::istream &packets) {
     while (packets) {
         char byte;
         packets.read(&byte, 1);
+        if (byte == '\0') {
+            break;
+        }
         body += byte;
     }
 
@@ -223,7 +226,7 @@ auto HttpServer::find_request_handler(const HttpRequest &request) -> handlers_ma
 void HttpServer::read_data_from_socket(int connection_fd, std::iostream &packets) {
     ssize_t bytes_received = -1, total_bytes = 0, excess = 0;
     char packet[packet_size];
-    memset(packet, '0', sizeof(packet));
+    memset(packet, '\0', sizeof(packet));
 
     //TODO have a timeout on reading from socket
     // if it's exceeded, return 408 Request Timeout
@@ -239,14 +242,18 @@ void HttpServer::read_data_from_socket(int connection_fd, std::iostream &packets
         packets << packet;
         total_bytes += bytes_received;
         if (bytes_received < packet_size) {
-            excess = bytes_received - packet_size;
+            excess = packet_size - bytes_received;
             break;
         }
     }
     log("Data received");
-    check_err(recv);
+//    check_err(recv);
 
-    packets.readsome(nullptr, excess);
+    //TODO remove trailing null bytes
+//    char nulls[excess];
+//    packets.seekg(total_bytes)
+//        .get(nulls, excess)
+//        .seekg(0);
 }
 
 void HttpServer::add_mandatory_headers_to_response(HttpResponse &response) {
@@ -283,7 +290,7 @@ void HttpServer::send_response_to_socket(int connection_fd, HttpResponse respons
 
     log("Closing connection...");
     close(connection_fd);
-    check_err(close);
+//    check_err(close);
     log("Connection closed");
 }
 
