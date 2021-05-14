@@ -19,15 +19,17 @@ public:
     struct Config {
         unsigned long packet_size;
         unsigned socket_connection_queue_size;
+        unsigned socket_read_timeout_millis;
         ThreadPool::Config th_pool_config;
 
-        Config() : packet_size(256), socket_connection_queue_size(10) {}
+        Config() : packet_size(52), socket_connection_queue_size(10), socket_read_timeout_millis(30 * 1000) {}
     };
 
 private:
     int socket_fd;
     unsigned long packet_size;
     unsigned socket_connection_queue_size;
+    unsigned socket_read_timeout_millis;
 
     using handlers_map = std::unordered_map<RequestMatcher, std::function<HttpResponse(const HttpRequestContext &)>>;
     handlers_map handlers;
@@ -61,7 +63,9 @@ private:
 
     std::pair<int, struct sockaddr_in> accept_connection();
 
-    void read_data_from_socket(int connection_fd, std::iostream &packets);
+    bool check_for_client_timeout(int);
+
+    bool read_data_from_socket(int, std::iostream &);
 
     static HttpRequest parse_http_request(std::istream&);
 

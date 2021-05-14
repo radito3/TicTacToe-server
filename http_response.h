@@ -2,6 +2,7 @@
 #define TICTACTOE_SERVER_HTTP_RESPONSE_H
 
 #include <cstring>
+#include <map>
 
 class HttpResponse {
 public:
@@ -63,7 +64,7 @@ private:
 
     explicit HttpResponse(const HttpResponse::Builder& builder) : status_code(builder.status_code),
                                                                   body(builder.body_) {
-        for (auto&& pair : builder.headers) {
+        for (auto pair : builder.headers) {
             headers.insert(pair);
         }
     }
@@ -81,6 +82,10 @@ public:
 
     bool contains_header(std::string_view header_key) const {
         return headers.find(header_key) != headers.end();
+    }
+
+    unsigned get_status_code() const {
+        return status_code;
     }
 
     char* to_c_str() const {
@@ -115,6 +120,8 @@ private:
                 return "Accepted";
             case 404:
                 return "Not Found";
+            case 408:
+                return "Request Timeout";
             case 500:
                 return "Internal Server Error";
             case 503:

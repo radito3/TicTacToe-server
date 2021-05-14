@@ -1,5 +1,8 @@
 #include "HttpServer.h"
 #include <iostream>
+#include <condition_variable>
+#include <mutex>
+#include <thread>
 #include <regex>
 #include <sstream>
 #include <utility>
@@ -41,6 +44,7 @@ void log(Args&&... args) {
 HttpServer::HttpServer(HttpServer::Config server_config)
     : packet_size(server_config.packet_size),
       socket_connection_queue_size(server_config.socket_connection_queue_size),
+      socket_read_timeout_millis(server_config.socket_read_timeout_millis),
       connection_pool(server_config.th_pool_config)
 {
     create_tcp_socket();
@@ -66,7 +70,12 @@ void HttpServer::start() {
             continue;
         }
         std::stringstream packets;
-        read_data_from_socket(connection_fd, packets);
+        bool timeout = read_data_from_socket(connection_fd, packets);
+        if (timeout) {
+            send_response_to_socket(connection_fd, HttpResponse::new_builder()
+                                                    .status(408)
+                                                    .build());
+        }
         HttpRequest request = parse_http_request(packets);
 
         auto handler = find_request_handler(request);
@@ -223,13 +232,34 @@ auto HttpServer::find_request_handler(const HttpRequest &request) -> handlers_ma
     return handlers.end();
 }
 
-void HttpServer::read_data_from_socket(int connection_fd, std::iostream &packets) {
-    ssize_t bytes_received = -1, total_bytes = 0, excess = 0;
+bool HttpServer::check_for_client_timeout(int connection_fd) {
+    std::condition_variable timer;
+    std::mutex t_mutex;
+    unsigned long packet_size_ = this->packet_size;
+
+    std::thread([connection_fd, &timer, packet_size_]() {
+        char packet[packet_size_];
+        recv(connection_fd, (void *) packet, packet_size_, MSG_PEEK);
+        timer.notify_one();
+    }).detach();
+
+    std::unique_lock<std::mutex> lock(t_mutex);
+    if (timer.wait_for(lock, std::chrono::milliseconds(socket_read_timeout_millis)) == std::cv_status::timeout) {
+        return true;
+    }
+    return false;
+}
+
+bool HttpServer::read_data_from_socket(int connection_fd, std::iostream &packets) {
+    bool timeout = check_for_client_timeout(connection_fd);
+    if (timeout) {
+        return true;
+    }
+
+    ssize_t bytes_received = -1;
     char packet[packet_size];
     memset(packet, '\0', sizeof(packet));
 
-    //TODO have a timeout on reading from socket
-    // if it's exceeded, return 408 Request Timeout
     log("Receiving data from connection with fd ", connection_fd, "...");
     while ((bytes_received = recv(connection_fd, (void *) packet, packet_size, 0)) != -1) {
         if (bytes_received == 0) { //EOF
@@ -240,20 +270,13 @@ void HttpServer::read_data_from_socket(int connection_fd, std::iostream &packets
         // then decide whether we need to read more (i.e. rest of body)
         // if not, we need to free the memory that the body takes
         packets << packet;
-        total_bytes += bytes_received;
         if (bytes_received < packet_size) {
-            excess = packet_size - bytes_received;
             break;
         }
+        memset(packet, '\0', sizeof(packet));
     }
     log("Data received");
-//    check_err(recv);
-
-    //TODO remove trailing null bytes
-//    char nulls[excess];
-//    packets.seekg(total_bytes)
-//        .get(nulls, excess)
-//        .seekg(0);
+    return false;
 }
 
 void HttpServer::add_mandatory_headers_to_response(HttpResponse &response) {
@@ -265,7 +288,11 @@ void HttpServer::add_mandatory_headers_to_response(HttpResponse &response) {
 
     response.add_header("Date", time.str());
     response.add_header("Server", "cpp-server/0.1.0");
-    response.add_header("Connection", "keep-alive");
+    if (response.get_status_code() / 100 == 2) {
+        response.add_header("Connection", "keep-alive");
+    } else {
+        response.add_header("Connection", "close");
+    }
     if (!response.contains_header("Content-Type") && response.contains_header("Content-Length")) {
         response.add_header("Content-Type", "text/plain");
     }

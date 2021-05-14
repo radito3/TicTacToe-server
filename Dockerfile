@@ -1,18 +1,11 @@
-FROM cpp-build-base:0.1.0 AS build
-
-WORKDIR /src
-
+FROM alpine:latest AS build
+RUN apk update && apk add --no-cache bash gcc g++ cmake make libstdc++ libgcc musl
+WORKDIR /build
 COPY . ./
-
 RUN cmake . && make
 
-FROM ubuntu:bionic
-
-WORKDIR /opt/hello-world
-
-COPY --from=build /src/TicTacToe_server ./
-
+FROM alpine:latest
+WORKDIR /server
+COPY --from=build /build/TicTacToe_server ./
 EXPOSE 80
-
 CMD ["./TicTacToe_server"]
-
