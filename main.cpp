@@ -9,12 +9,13 @@ int main() {
                         Player("pl_2", Symbol::CIRCLE, new GrpcDelegatingWriter, new GrpcDelegatingReader));
 
     HttpServer server;
-    server.register_handler({HttpMethod::GET, "/"},
-                            [](const HttpRequestContext &context) {
-                                return HttpResponse::new_builder()
-                                        .status(200)
-                                        .build();
-                            });
+    //
+    using enum HttpMethod;
+    server.register_handler<GET>("/", [](const HttpRequestContext &context) {
+                                            return HttpResponse::new_builder()
+                                                    .status(200)
+                                                    .build();
+                                        });
 
     session.play();
 

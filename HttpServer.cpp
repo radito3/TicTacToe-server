@@ -86,12 +86,7 @@ void HttpServer::start() {
             continue;
         }
 
-        bool accepted = connection_pool.submit_job(HandleConnectionJob(connection_fd, *handler, request));
-        if (!accepted) {
-            send_response_to_socket(connection_fd, HttpResponse::new_builder()
-                                                    .status(503)
-                                                    .build());
-        }
+        connection_pool.submit_job(HandleConnectionJob(connection_fd, *handler, request));
     }
 }
 

@@ -34,6 +34,13 @@ private:
     using handlers_map = std::unordered_map<RequestMatcher, std::function<HttpResponse(const HttpRequestContext &)>>;
     handlers_map handlers;
 
+    //TODO set following as rejection policy
+    /*
+     * send_response_to_socket(connection_fd, HttpResponse::new_builder()
+     *                                              .status(503)
+     *                                              .build())
+     *
+     * */
     ThreadPool connection_pool;
 
 public:

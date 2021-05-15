@@ -1,35 +1,43 @@
 #ifndef TICTACTOE_SERVER_THREAD_POOL_H
 #define TICTACTOE_SERVER_THREAD_POOL_H
 
-#include <chrono>
 #include <functional>
 #include <thread>
 #include <vector>
 
 //thread pool should have a rw_lock (a shared_mutex with a shared_lock for read and unique_lock for write)
 class ThreadPool {
+    class RejectedJobPolicy {
+    public:
+        virtual void handle_rejected_job(const std::function<void()>&) = 0;
+    };
+
+    //TODO implement default rejection policy
+
 public:
     struct Config {
         unsigned task_queue_size;
         unsigned max_num_threads;
-        std::chrono::milliseconds thread_idle_timeout;
+        unsigned thread_idle_timeout_millis;
         unsigned initial_thread_num;
+        //TODO add default rejection policy
 
-        Config() : task_queue_size(10), max_num_threads(15),
-                    thread_idle_timeout(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::minutes(10))),
-                    initial_thread_num(5) {}
+        Config() : task_queue_size(10), max_num_threads(15), thread_idle_timeout_millis(10 * 60 * 1000),
+                   initial_thread_num(5) {}
     };
 
 private:
     //fields...
     unsigned num_active_threads = 0;
+    RejectedJobPolicy* rejected_job_policy;
     //FIXME temporary impl
     std::vector<std::thread> threads;
 
 public:
-    explicit ThreadPool(ThreadPool::Config config = {}) {} //TODO implement
+    explicit ThreadPool(ThreadPool::Config config = {}) {}
 
     ~ThreadPool() {
+        delete rejected_job_policy;
         //FIXME temporary impl
         for (auto& th : threads) {
             th.join();
@@ -40,13 +48,18 @@ public:
         //wait for threads destruction
     }
 
-    bool submit_job(std::function<void()>&& job) {
+    void set_rejected_job_policy(RejectedJobPolicy* policy) {
+        if (rejected_job_policy) {
+            delete rejected_job_policy;
+        }
+        rejected_job_policy = policy;
+    }
+
+    void submit_job(std::function<void()>&& job) {
         //FIXME temporary impl
         threads.emplace_back(std::forward<std::function<void()>>(job));
-        //if accepted
-        return true;
         //if rejected
-        return false;
+        rejected_job_policy->handle_rejected_job(job);
     }
 
     //public methods...
