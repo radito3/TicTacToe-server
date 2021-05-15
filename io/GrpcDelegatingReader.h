@@ -4,8 +4,10 @@
 #include <io/InputReader.h>
 
 class GrpcDelegatingReader : public InputReader {
+//    InputReaderClient client;
 
 public:
+//    GrpcDelegatingReader(InputReaderClient) {}
 
     input_t read() const override {
         return input_t(true);

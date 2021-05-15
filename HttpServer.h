@@ -51,7 +51,9 @@ public:
     void start();
 
     template<HttpMethod Method>
-    void register_handler(const char*, std::function<HttpResponse(const HttpRequestContext &)>);
+    void register_handler(const char*path, std::function<HttpResponse(const HttpRequestContext &)> handler) {
+        handlers.insert({{Method, path}, std::move(handler)});
+    }
 
 private:
     class HandleConnectionJob {
@@ -71,7 +73,7 @@ private:
 
     std::pair<int, struct sockaddr_in> accept_connection();
 
-    bool check_for_client_timeout(int);
+    bool check_for_client_timeout(int) const;
 
     bool read_data_from_socket(int, std::iostream &);
 

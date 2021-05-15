@@ -90,11 +90,11 @@ void HttpServer::start() {
     }
 }
 
-template<HttpMethod Method>
-void HttpServer::register_handler(const char* path,
-                                  std::function<HttpResponse(const HttpRequestContext &)> handler) {
-    handlers.insert({{Method, path}, std::move(handler)});
-}
+//template<HttpMethod Method>
+//void HttpServer::register_handler(const char* path,
+//                                  std::function<HttpResponse(const HttpRequestContext &)> handler) {
+//    handlers.insert({{Method, path}, std::move(handler)});
+//}
 
 void HttpServer::create_tcp_socket() {
     log("Creating socket...");
@@ -228,10 +228,10 @@ auto HttpServer::find_request_handler(const HttpRequest &request) -> handlers_ma
     return handlers.end();
 }
 
-bool HttpServer::check_for_client_timeout(int connection_fd) {
+bool HttpServer::check_for_client_timeout(int connection_fd) const {
     std::condition_variable timer;
     std::mutex t_mutex;
-    unsigned long packet_size_ = this->packet_size;
+    unsigned packet_size_ = this->packet_size;
 
     std::thread([connection_fd, &timer, packet_size_]() {
         char packet[packet_size_];
@@ -291,15 +291,15 @@ HttpResponse HttpServer::add_mandatory_headers_to_response(const HttpResponse &r
     } else {
         result.header("Connection", "close");
     }
-    if (!result.contains_header("Content-Type") && response.contains_header("Content-Length")) {
+    if (!result.contains_header("Content-Type") && result.contains_header("Content-Length")) {
         result.header("Content-Type", "text/plain");
     }
     return result.build();
 }
 
 void HttpServer::send_response_to_socket(int connection_fd, HttpResponse response) {
-    add_mandatory_headers_to_response(response);
-    char* response_str = response.to_c_str();
+    auto res = add_mandatory_headers_to_response(response);
+    char* response_str = res.to_c_str();
     size_t response_size = strlen(response_str);
 
     log("Sending data to connection with fd ", connection_fd, "...");

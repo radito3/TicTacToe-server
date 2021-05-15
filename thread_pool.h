@@ -7,14 +7,15 @@
 
 //thread pool should have a rw_lock (a shared_mutex with a shared_lock for read and unique_lock for write)
 class ThreadPool {
+public:
     class RejectedJobPolicy {
     public:
+        virtual ~RejectedJobPolicy() = default;
+
         virtual void handle_rejected_job(const std::function<void()>&) = 0;
     };
-
     //TODO implement default rejection policy
 
-public:
     struct Config {
         unsigned task_queue_size;
         unsigned max_num_threads;
@@ -29,7 +30,7 @@ public:
 private:
     //fields...
     unsigned num_active_threads = 0;
-    RejectedJobPolicy* rejected_job_policy;
+//    RejectedJobPolicy* rejected_job_policy;
     //FIXME temporary impl
     std::vector<std::thread> threads;
 
@@ -37,7 +38,7 @@ public:
     explicit ThreadPool(ThreadPool::Config config = {}) {}
 
     ~ThreadPool() {
-        delete rejected_job_policy;
+//        delete rejected_job_policy;
         //FIXME temporary impl
         for (auto& th : threads) {
             th.join();
@@ -48,18 +49,16 @@ public:
         //wait for threads destruction
     }
 
-    void set_rejected_job_policy(RejectedJobPolicy* policy) {
-        if (rejected_job_policy) {
-            delete rejected_job_policy;
-        }
-        rejected_job_policy = policy;
-    }
+//    void set_rejected_job_policy(RejectedJobPolicy* policy) {
+//        delete rejected_job_policy;
+//        rejected_job_policy = policy;
+//    }
 
     void submit_job(std::function<void()>&& job) {
         //FIXME temporary impl
         threads.emplace_back(std::forward<std::function<void()>>(job));
         //if rejected
-        rejected_job_policy->handle_rejected_job(job);
+//        rejected_job_policy->handle_rejected_job(job);
     }
 
     //public methods...
