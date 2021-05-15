@@ -95,9 +95,10 @@ void HttpServer::start() {
     }
 }
 
-void HttpServer::register_handler(const RequestMatcher &matcher,
+template<HttpMethod Method>
+void HttpServer::register_handler(const char* path,
                                   std::function<HttpResponse(const HttpRequestContext &)> handler) {
-    handlers.insert({matcher, std::move(handler)});
+    handlers.insert({{Method, path}, std::move(handler)});
 }
 
 void HttpServer::create_tcp_socket() {
@@ -279,23 +280,26 @@ bool HttpServer::read_data_from_socket(int connection_fd, std::iostream &packets
     return false;
 }
 
-void HttpServer::add_mandatory_headers_to_response(HttpResponse &response) {
+//TODO test...
+HttpResponse HttpServer::add_mandatory_headers_to_response(const HttpResponse &response) {
+    auto result = HttpResponse::copy_from(response);
     using std::chrono::system_clock;
     std::time_t tt = system_clock::to_time_t(system_clock::now());
     struct std::tm* ptm = std::localtime(&tt);
     std::stringstream time;
     time << std::put_time(ptm, "%a %b %d %T %Z %Y");
 
-    response.add_header("Date", time.str());
-    response.add_header("Server", "cpp-server/0.1.0");
+    result.header("Date", time.str());
+    result.header("Server", "cpp-server/0.1.0");
     if (response.get_status_code() / 100 == 2) {
-        response.add_header("Connection", "keep-alive");
+        result.header("Connection", "keep-alive");
     } else {
-        response.add_header("Connection", "close");
+        result.header("Connection", "close");
     }
-    if (!response.contains_header("Content-Type") && response.contains_header("Content-Length")) {
-        response.add_header("Content-Type", "text/plain");
+    if (!result.contains_header("Content-Type") && response.contains_header("Content-Length")) {
+        result.header("Content-Type", "text/plain");
     }
+    return result.build();
 }
 
 void HttpServer::send_response_to_socket(int connection_fd, HttpResponse response) {

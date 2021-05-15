@@ -3,6 +3,7 @@
 
 #include <cstring>
 #include <map>
+#include <string_view>
 
 class HttpResponse {
 public:
@@ -14,6 +15,11 @@ public:
         friend class HttpResponse;
 
     public:
+        Builder() = default;
+
+        explicit Builder(const HttpResponse& res) : status_code(res.status_code),
+            headers(res.headers), body_(res.body) {}
+
         Builder& status(unsigned short sc) {
             status_code = sc;
             return *this;
@@ -22,6 +28,10 @@ public:
         Builder& header(std::string_view header_key, std::string_view header_value) {
             headers.insert({header_key, header_value});
             return *this;
+        }
+
+        bool contains_header(std::string_view header_key) const {
+            return headers.find(header_key) != headers.end();
         }
 
         Builder& body(const char* data) {
@@ -59,15 +69,10 @@ public:
 private:
     unsigned short status_code;
     std::multimap<std::string_view, std::string_view> headers;
-
     std::string_view body;
 
     explicit HttpResponse(const HttpResponse::Builder& builder) : status_code(builder.status_code),
-                                                                  body(builder.body_) {
-        for (auto pair : builder.headers) {
-            headers.insert(pair);
-        }
-    }
+        headers(builder.headers), body(builder.body_) {}
 
 public:
     HttpResponse() : status_code(0) {};
@@ -76,12 +81,8 @@ public:
         return HttpResponse::Builder();
     }
 
-    void add_header(std::string_view header_key, std::string_view header_value) {
-        headers.insert({header_key, header_value});
-    }
-
-    bool contains_header(std::string_view header_key) const {
-        return headers.find(header_key) != headers.end();
+    static HttpResponse::Builder copy_from(const HttpResponse& response) {
+        return HttpResponse::Builder(response);
     }
 
     unsigned get_status_code() const {

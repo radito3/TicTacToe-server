@@ -43,7 +43,8 @@ public:
 
     void start();
 
-    void register_handler(const RequestMatcher&, std::function<HttpResponse(const HttpRequestContext &)>);
+    template<HttpMethod Method>
+    void register_handler(const char*, std::function<HttpResponse(const HttpRequestContext &)>);
 
 private:
     class HandleConnectionJob {
@@ -73,7 +74,7 @@ private:
 
     auto find_request_handler(const HttpRequest&) -> handlers_map::iterator;
 
-    static void add_mandatory_headers_to_response(HttpResponse &);
+    static HttpResponse add_mandatory_headers_to_response(const HttpResponse &);
 
     static void send_response_to_socket(int, HttpResponse);
 };
