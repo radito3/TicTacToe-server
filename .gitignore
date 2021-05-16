@@ -10,6 +10,7 @@
 # Precompiled Headers
 *.gch
 *.pch
+*.pb.*
 
 # Compiled Dynamic libraries
 *.so
@@ -31,4 +32,7 @@
 *.out
 *.app
 
+.vs/
+.vscode/
+out/
 deps/

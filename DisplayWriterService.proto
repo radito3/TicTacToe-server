@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+import "google/protobuf/empty.proto";
+import "Coordinate.proto";
+
+service DisplayWriter {
+
+    rpc write_grid(google.protobuf.Empty) returns (google.protobuf.Empty) {}
+
+    rpc clear_cell_at(Coordinate) returns (google.protobuf.Empty) {}
+
+    rpc write_symbol(WriteIconMessage) returns (google.protobuf.Empty) {}
+
+    rpc write_placeholder_for(WriteIconMessage) returns (google.protobuf.Empty) {}
+
+    rpc write_stroke(WriteStrokeMessage) returns (google.protobuf.Empty) {}
+
+    rpc write_msg(TextMessage) returns (google.protobuf.Empty) {}
+
+    rpc write_temp_msg(TextMessage) returns (google.protobuf.Empty) {}
+
+    rpc flash_placeholder(WriteIconMessage) returns (google.protobuf.Empty) {}
+}
+
+enum StrokeDirection {
+    SD_DOWN = 0;
+    SD_ACROSS = 1;
+    SD_DIAGONAL_LEFT = 2;
+    SD_DIAGONAL_RIGHT = 3;
+}
+
+enum Symbol {
+    CIRCLE = 0;
+    CROSS = 1;
+}
+
+message WriteIconMessage {
+     Symbol symbol = 1;
+     Coordinate coord = 2;
+}
+
+message WriteStrokeMessage {
+     Coordinate coord = 1;
+     StrokeDirection stroke_dir = 2;
+}
+
+message TextMessage {
+     string value = 1;
+}
