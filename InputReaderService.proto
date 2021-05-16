@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+import "google/protobuf/empty.proto";
+import "Coordinate.proto";
+
+service InputReader {
+    
+    rpc read(google.protobuf.Empty) returns (Input) {}
+
+}
+
+enum MoveDirection {
+    MD_UP = 0;
+    MD_DOWN = 1;
+    MD_LEFT = 2;
+    MD_RIGHT = 3;
+    MD_INVALID = 4;
+}
+
+enum InputType {
+    DIRECTIONAL = 0;
+    POSITIONAL = 1;
+    SET = 2;
+}
+
+message Input {
+    MoveDirection move_dir = 1;
+    bool set = 2;
+    Coordinate coord = 3;
+    InputType type = 4;
+}
