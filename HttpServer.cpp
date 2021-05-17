@@ -4,6 +4,7 @@
 #include <mutex>
 #include <thread>
 #include <regex>
+#include <ranges>
 #include <sstream>
 #include <utility>
 #include <vector>
@@ -69,13 +70,20 @@ void HttpServer::start() {
         if (connection_fd < 0) {
             continue;
         }
+
+        //when persistent connection support is added,
+        // change this to read and write in a loop on a separate thread
+        // (which internally reads from and sends to socket in coroutines)
         std::stringstream packets;
+        //TODO move this to async job so as to not block the main server thread
         bool timeout = read_data_from_socket(connection_fd, packets);
         if (timeout) {
             send_response_to_socket(connection_fd, HttpResponse::new_builder()
                                                     .status(408)
                                                     .build());
         }
+        //TODO check for the length of the url
+        // if it is too long (e.g. more than 8000 symbols (encoded)) return 414 URI Too Long
         HttpRequest request = parse_http_request(packets);
 
         auto handler = find_request_handler(request);
@@ -89,12 +97,6 @@ void HttpServer::start() {
         connection_pool.submit_job(HandleConnectionJob(connection_fd, *handler, request));
     }
 }
-
-//template<HttpMethod Method>
-//void HttpServer::register_handler(const char* path,
-//                                  std::function<HttpResponse(const HttpRequestContext &)> handler) {
-//    handlers.insert({{Method, path}, std::move(handler)});
-//}
 
 void HttpServer::create_tcp_socket() {
     log("Creating socket...");
@@ -275,7 +277,6 @@ bool HttpServer::read_data_from_socket(int connection_fd, std::iostream &packets
     return false;
 }
 
-//TODO test...
 HttpResponse HttpServer::add_mandatory_headers_to_response(const HttpResponse &response) {
     auto result = HttpResponse::copy_from(response);
     using std::chrono::system_clock;
@@ -285,12 +286,11 @@ HttpResponse HttpServer::add_mandatory_headers_to_response(const HttpResponse &r
     time << std::put_time(ptm, "%a %b %d %T %Z %Y");
 
     result.header("Date", time.str());
-    result.header("Server", "cpp-server/0.1.0");
-    if (response.get_status_code() / 100 == 2) {
-        result.header("Connection", "keep-alive");
-    } else {
-        result.header("Connection", "close");
-    }
+    result.header("Server", "cpp-server/0.1.0 (Alpine Linux)");
+    //when switching to reading from and sending to a connection in a coroutine,
+    // consider redesigning to allow for persistent connections
+    // in which case, this header will be omitted
+    result.header("Connection", "close");
     if (!result.contains_header("Content-Type") && result.contains_header("Content-Length")) {
         result.header("Content-Type", "text/plain");
     }
@@ -316,7 +316,6 @@ void HttpServer::send_response_to_socket(int connection_fd, HttpResponse respons
 
     log("Closing connection...");
     close(connection_fd);
-//    check_err(close);
     log("Connection closed");
 }
 
@@ -329,56 +328,87 @@ void remove_leading_trailing_slash(std::string& path) {
     }
 }
 
+std::string strip_leading_trailing_brace(const std::string& str) {
+    return str.substr(1, str.size() - 1);
+}
+
+template <typename T>
+std::string to_string(const T& view) {
+    auto common = view | std::views::common;
+    return std::string(common.begin(), common.end());
+}
+
 std::unordered_map<std::string_view, std::string_view> extract_path_params(const RequestMatcher& matcher,
                                                                            const HttpRequest& request) {
-    //matcher: /path/{arg1}/{arg2}
-    //url:     /path/abc/def
     if (matcher.path.find('{') == std::string_view::npos) {
         return {};
     }
     std::string matcher_path(matcher.path);
-    remove_leading_trailing_slash(matcher_path);
     std::string request_url(request.url);
+    remove_leading_trailing_slash(matcher_path);
     remove_leading_trailing_slash(request_url);
 
-    std::regex slash("/");
-    std::vector<std::string> path_elems(std::sregex_token_iterator(matcher_path.begin(), matcher_path.end(), slash, -1),
-                                        std::sregex_token_iterator());
-    std::vector<std::string> url_elems(std::sregex_token_iterator(request_url.begin(), request_url.end(), slash, -1),
-                                       std::sregex_token_iterator());
+    auto path_elems = matcher_path | std::views::split('/');
+    auto url_elems = request_url | std::views::split('/');
     std::unordered_map<std::string_view, std::string_view> path_params;
-    for (int i = 0; i < path_elems.size(); ++i) {
-        if (path_elems[i].find('{') == std::string::npos) {
-            continue;
-        }
-        path_params.insert({path_elems[i].substr(1, path_elems[i].size() - 1), url_elems[i]});
-    }
 
-    return {};
+    for (auto url_it = url_elems.begin(); const auto& path_view : path_elems) {
+        auto path_elem = to_string(path_view);
+        if (path_elem.find('{') != std::string::npos) {
+            path_params.insert({ strip_leading_trailing_brace(path_elem), to_string(*url_it) });
+        }
+        ++url_it;
+    }
+    return path_params;
 }
+
+using r_iter = std::sregex_token_iterator;
 
 std::multimap<std::string_view, std::string_view> extract_query_params(const HttpRequest& request) {
-    // /path?a=b&d=c or /path?a=b;b=c or /path?a
-    return {};
+    if (request.url.find('?') == std::string_view::npos) {
+        return {};
+    }
+    std::string query_url(request.url.substr(request.url.find('?') + 1));
+    if (query_url.rfind('#') != std::string::npos) {
+        query_url = query_url.substr(0, query_url.find('#'));
+    }
+    std::regex query_delims(R"([&;])");
+    std::vector<std::string> query_elems(r_iter(query_url.begin(), query_url.end(), query_delims, -1), r_iter());
+    std::multimap<std::string_view, std::string_view> query_params;
+    for (auto& query_elem : query_elems) {
+        if (query_elem.find('=') == std::string::npos) {
+            query_params.insert({query_elem, query_elem});
+            continue;
+        }
+        auto query_elem_parts = query_elem | std::views::split('=');
+        auto it = query_elem_parts.begin();
+        auto key = to_string(*it);
+        auto val = to_string(*++it);
+        query_params.insert({key, val});
+    }
+    return query_params;
 }
 
-std::vector<std::string_view> extract_fragment_params(const HttpRequest& matcher) {
-    // /path#abc
-    return {};
+std::string_view extract_fragment(const HttpRequest& request) {
+    if (request.url.rfind('#') == std::string_view::npos) {
+        return {};
+    }
+    return request.url.substr(request.url.rfind('#') + 1);
 }
 
 HttpServer::HandleConnectionJob::HandleConnectionJob(int connection_fd, const handlers_map::value_type &pair,
                                                      const HttpRequest& request)
         : connection_fd(connection_fd), pair(pair),
+        //TODO handle url encoding
         request_context(request.headers,
                         extract_path_params(pair.first, request),
                         extract_query_params(request),
-                        extract_fragment_params(request),
+                        extract_fragment(request),
                         request.body) {}
 
 void HttpServer::HandleConnectionJob::operator()() {
     //these will be used for creating the gRPC stubs
-    //TODO add them to query map?
+    //TODO add them to query map
 //    char *connection_address = inet_ntoa(connaddr.sin_addr);
 //    unsigned short connection_port = connaddr.sin_port;
 

@@ -62,6 +62,7 @@ private:
         HttpRequestContext request_context;
 
     public:
+            //TODO change to HandleConnectionJob(int, const HttpServer*)
         HandleConnectionJob(int, const handlers_map::value_type&, const HttpRequest&);
 
         void operator()();
