@@ -1,19 +1,23 @@
-#ifndef TICTACTOE_GAMESESSION_H
-#define TICTACTOE_GAMESESSION_H
+#ifndef TICTACTOE_GAMESESSIONSMANAGER_H
+#define TICTACTOE_GAMESESSIONSMANAGER_H
 
-#include "SearchManager.h"
 #include <thread_pool.h>
+#include <GrpcDelegatingWriter.h>
+#include <GrpcDelegatingReader.h>
+#include <Player.h>
+#include "PlayerInfo.h"
 #include <GameSession.h>
 
 class GameSessionsManager {
-	ThreadPool threadpool;
+	ThreadPool game_sessions_pool;
 
 public:
+	void start_game_session(PlayerInfo player1, PlayerInfo player2) {
+		Player first_player(player1.id, symbol::CROSS, new GrpcDelegatingWriter(player1.address), new GrpcDelegatingReader(player1.address));
+		Player second_player(player2.id, symbol::CIRCLE, new GrpcDelegatingWriter(player2.address), new GrpcDelegatingReader(player2.address));
 
-	void start_game_session(SearchManager::PlayerInfo player1, SearchManager::PlayerInfo player2) {
-		threadpool.submit_job([&]() {
-			GameSession session(Player(player1.id, symbol::CROSS, new GrpcDelegatingWriter(player1.adress), new GrpcDelegatingReader(player1.adress)),
-												Player(player2.id, symbol::CIRCLE, new GrpcDelegatingWriter(player2.adress), new GrpcDelegatingReader(player2.adress));
+		game_sessions_pool.submit_job([=]() {
+			GameSession session(first_player, second_player);
 			session.play();
 		});
 	}

@@ -43,7 +43,6 @@ private:
 
 public:
     explicit ThreadPool(ThreadPool::Config config = {}) : task_queue_size(config.task_queue_size) {
-        //start();
     } //TODO implement
 
     ~ThreadPool() {
@@ -65,24 +64,9 @@ public:
         rejected_job_policy = policy;
     }
 
->>>>>>> 14dde82 (Add protobuf definitions & work on impl)
-
     void submit_job(std::function<void()>&& job) {
         threads.emplace_back(std::forward<std::function<void()>>(job));
-         /*if (task_queue::size() < task_queue_size) {
-
-            auto wrapper = std::make_shared<std::packaged_task<decltype(job()) ()>>(std::move(job()));
-
-            {
-                std::unique_lock<std::mutex> lock{ event_mutex };
-                task_queue.emplace([=] {
-                    (*wrapper)();
-                    })
-            }
-
-            event_var.notify_one();
-            return wrapper->get_future();
-
+        /*
         }
         else {
             rejected_job_policy->handle_rejected_job(job);
@@ -92,46 +76,6 @@ public:
 private:
     //private methods...
 
-  
-
-    /*void start(num_active_threads) {
-        for (auto i = 0u ; i < num_active_threads; ++i) {
-            threads.emplace_back([=] {
-                while (true) {
-
-                    std::function<void()> job;
-
-                    {
-                        std::unique_lock<std::mutex> lock{ event_mutex };
-                        event_var.wait(lock, [=] {return stoping || !task_queue.empty(); });
-
-                        if (stoping && task_queue.empty())
-                            break;
-
-                        job = std::move(task_queue.front());
-                        task_queue.pop();
-
-                    }
-
-                    job();
-                    
-                }
-            })
-        }
-    }
-    void stop() noexcept
-    {
-        {
-            std::unique_lock<std::mutex> lock{event_mutex};
-            stoping = true;
-        }
- 
-        event_var.notify_all();
- 
-        for (auto& th : threads) {
-            th.join();
-        }
-    }*/
 };
 
 #endif //TICTACTOE_SERVER_THREAD_POOL_H
