@@ -14,31 +14,31 @@ class InputReaderClient {
 	std::unique_ptr<InputReader::Stub> stub;
 
 public:
-		explicit InputReaderClient(std::shared_ptr<Channel> channel) : stub(InputReader::NewStub(channel)){}
+	explicit InputReaderClient(std::shared_ptr<Channel> channel) : stub(InputReader::NewStub(channel)) {}
 
-		input_t read() const {
-			Input input;
-			ClientContext context;
-			google::protobuf::Empty e;
-			Status status = stub->read(&context, e, &input);
+	input_t read() const {
+		Input input;
+		ClientContext context;
+		google::protobuf::Empty empty_request;
+		Status status = stub->read(&context, empty_request, &input);
 
-			if (status.ok()) {
-				switch (input.type()) {
-				case InputType::DIRECTIONAL:
-					return input_t(input.move_dir());
-				case InputType::POSITIONAL: {
-					auto coord = input.coord();
-					return input_t({coord.x(), coord.y()});
-				}
-				case InputType::SET:
-					return input_t(input.set());
-				}
-				return input_t(move_direction::INVALID);
-			}	else {
-				std::cerr << status.error_code() << ": " << status.error_message() << std::endl;
-				return input_t(move_direction::INVALID);
-			}
+		if (!status.ok()) {
+			std::cerr << status.error_code() << ": " << status.error_message() << std::endl;
+			return input_t(move_direction::INVALID);
 		}
+		
+		switch (input.type()) {
+		case InputType::DIRECTIONAL:
+			return input_t(input.move_dir());
+		case InputType::POSITIONAL: {
+			auto coord = input.coord();
+			return input_t({coord.x(), coord.y()});
+		}
+		case InputType::SET:
+			return input_t(input.set());
+		}
+		return input_t(move_direction::INVALID);
+	}
 };
 
 #endif

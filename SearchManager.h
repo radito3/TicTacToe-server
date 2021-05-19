@@ -3,16 +3,11 @@
 
 #include <unordered_map>
 #include <random>
+#include "PlayerInfo.h"
 
 class SearchManager {
-public:
-	struct PlayerInfo {
-		std::string id;
-		std::string adress;
-	};
 
-private:
-	unordered_map<unsigned, PlayerInfo> active_searches;
+	std::unordered_map<unsigned, PlayerInfo> active_searches;
 
 public:
 	
@@ -20,12 +15,11 @@ public:
 		if (active_searches.empty()) {
 			active_searches[std::mt19937(std::random_device()())()] = player ;
 			return false;
-		} else {
-			return true;
-		}
+		} 
+		return true;
 	}
 
-	PlayerInfo get_player_info() {
+	std::pair<unsigned, PlayerInfo> get_player_info_with_search_id() {
 		return *active_searches.begin();
 	}
 
