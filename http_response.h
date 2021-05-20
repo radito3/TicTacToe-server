@@ -85,8 +85,17 @@ public:
         return HttpResponse::Builder(response);
     }
 
-    unsigned get_status_code() const {
-        return status_code;
+    friend std::ostream& operator<<(std::ostream& out, const HttpResponse &response) {
+        if (response.status_code == 0) {
+            throw std::runtime_error("Incomplete HTTP response: Status Code missing");
+        }
+        out << "HTTP/1.1 " << response.status_code << ' ' << parse_status_code(response.status_code) << std::endl;
+        for (const auto& [header_key, header_val] : response.headers) {
+            out << header_key << ": " << header_val << std::endl;
+        }
+        out << std::endl
+            << response.body << std::endl;
+        return out;
     }
 
     char* to_c_str() const {

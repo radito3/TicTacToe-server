@@ -4,6 +4,8 @@
 #include <functional>
 #include <thread>
 #include <vector>
+#include <tuple>
+#include <queue>
 
 //thread pool should have a rw_lock (a shared_mutex with a shared_lock for read and unique_lock for write)
 class ThreadPool {
@@ -28,11 +30,27 @@ public:
     };
 
 private:
+    template<typename Functor, typename... Args>
+    class Task {
+        Functor fn;
+        std::tuple<Args...> args;
+
+    public:
+        Task(Functor fn, const std::tuple<Args...> &args) : fn(fn), args(args) {}
+
+        void operator()() {
+            std::apply(fn, args);
+        }
+    };
+
     //fields...
     unsigned num_active_threads = 0;
+
 //    RejectedJobPolicy* rejected_job_policy;
     //FIXME temporary impl
     std::vector<std::thread> threads;
+
+//    std::queue<Task> task_queue;
 
 public:
     explicit ThreadPool(ThreadPool::Config config = {}) {}
@@ -45,7 +63,7 @@ public:
         }
         //close active connections
         //reject pending connections
-        //send shutdown signal
+        //send_ shutdown signal
         //wait for threads destruction
     }
 
@@ -59,6 +77,12 @@ public:
         threads.emplace_back(std::forward<std::function<void()>>(job));
         //if rejected
 //        rejected_job_policy->handle_rejected_job(job);
+    }
+
+    template<typename Functor, typename... Args>
+    void submit_with_args(Functor&& fn, Args&&... args) {
+        threads.emplace_back(std::forward<Functor>(fn), std::forward<Args>(args)...);
+        auto j = Task(std::forward<Functor>(fn), std::make_tuple(std::forward<Args>(args)...));
     }
 
     //public methods...
