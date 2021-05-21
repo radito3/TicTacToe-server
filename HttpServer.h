@@ -61,7 +61,7 @@ public:
         if (strlen(path) == 0) {
             throw std::runtime_error("path can't be empty");
         }
-        handlers.insert({{Method, path}, std::move(handler)});
+        handlers.insert({RequestMatcher(Method, path), std::move(handler)});
     }
 
 private:

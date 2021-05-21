@@ -11,8 +11,6 @@
 #include "connection.h"
 
 #include <iostream>
-using std::cerr;
-using std::endl;
 
 namespace detail {
     class HandleConnectionJob {
@@ -151,6 +149,7 @@ namespace detail {
             return request.url.substr(request.url.rfind('#') + 1);
         }
 
+        //FIXME this matches non-fully qualified paths (matcher: /abc ; path: /ab ; match <- shouldn't be)
         static bool path_matches(const RequestMatcher& matcher, const std::string& path) {
             auto strip_trailing_fw_slash = [] (const std::string& str) -> std::string {
                 if (str.size() > 1 && str.back() == '/') {
@@ -160,7 +159,6 @@ namespace detail {
             };
 
             if (std::ranges::count(matcher.path, '/') != std::ranges::count(strip_trailing_fw_slash(path), '/')) {
-                cerr << "length mismatch" << endl;
                 return false;
             }
             auto matcher_parts = matcher.path | std::views::split('/');
@@ -169,12 +167,10 @@ namespace detail {
             for (auto path_it = std::ranges::begin(path_parts); const auto& matcher_part_view : matcher_parts) {
                 std::string matcher_part = to_string(matcher_part_view);
                 if (matcher_part.find('{') == std::string::npos && (matcher_part <=> to_string(*path_it)) != 0) {
-                    cerr << "path fragment mismatch: " << matcher_part << " :: " << to_string(*path_it) << endl;
                     return false;
                 }
                 ++path_it;
             }
-            cerr << "path matched" << endl;
             return true;
         }
 

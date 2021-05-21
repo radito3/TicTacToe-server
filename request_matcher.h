@@ -3,18 +3,20 @@
 
 #include <iostream>
 
-#include <string_view>
 #include <regex>
 #include "http_methods.h"
 
 struct RequestMatcher {
-    const HttpMethod method;
-    const std::string_view path;
+    HttpMethod method;
+    std::string path;
 
-    RequestMatcher(HttpMethod method, std::string_view path) : method(method), path(path) {
-        if (path.find('?') != std::string_view::npos
-            || path.find('#') != std::string_view::npos) {
+    RequestMatcher(HttpMethod method, const std::string& path) : method(method), path(path) {
+        if (path.find('?') != std::string::npos
+            || path.find('#') != std::string::npos) {
             throw std::runtime_error("Path matcher can't contain query or fragment params");
+        }
+        if (path.size() > 1 && path.ends_with('/')) {
+            this->path = path.substr(0, path.size() - 1);
         }
     }
 

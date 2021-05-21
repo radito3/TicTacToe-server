@@ -42,7 +42,7 @@ namespace detail {
 
         Connection(Connection&& other) noexcept : connection_fd(std::exchange(other.connection_fd, -1)),
                  connection_address(other.connection_address), packet_size(std::exchange(other.packet_size, -1)),
-                 socket_read_timeout_millis(std::exchange(other.socket_read_timeout_millis, -1)) {}
+                 socket_read_timeout_millis(std::exchange(other.socket_read_timeout_millis, 0)) {}
 
         Connection& operator=(Connection&& other) noexcept {
             if (this == &other) {
@@ -51,7 +51,7 @@ namespace detail {
             connection_fd = std::exchange(other.connection_fd, -1);
             connection_address = other.connection_address;
             packet_size = std::exchange(other.packet_size, -1);
-            socket_read_timeout_millis = std::exchange(other.socket_read_timeout_millis, -1);
+            socket_read_timeout_millis = std::exchange(other.socket_read_timeout_millis, 0);
             return *this;
         }
 
@@ -107,10 +107,10 @@ namespace detail {
                 if (bytes_received == 0) { //EOF
                     break;
                 }
-                //we first need to examine the start of the request (start-line + headers_),
+                //we first need to examine the start of the request (start-line + headers),
                 // determine what to do,
-                // then decide whether we need to read more (i.e. rest of body_)
-                // if not, we need to free the memory that the body_ takes
+                // then decide whether we need to read more (i.e. rest of body)
+                // if not, we need to free the memory that the body takes
                 packets << packet;
                 if (bytes_received < packet_size) {
                     break;
@@ -126,11 +126,12 @@ namespace detail {
             std::condition_variable timer;
             std::mutex t_mutex;
 
-            std::thread([&timer, this]() {
+            std::thread recv_th([&timer, this]() {
                 char packet[packet_size];
                 recv(connection_fd, (void *) packet, packet_size, MSG_PEEK);
                 timer.notify_one();
-            }).detach();
+            });
+            recv_th.detach();
 
             std::unique_lock<std::mutex> lock(t_mutex);
             if (timer.wait_for(lock, std::chrono::milliseconds(socket_read_timeout_millis)) == std::cv_status::timeout) {
@@ -141,32 +142,34 @@ namespace detail {
 
         static HttpRequest parse_http_request(std::istream& packets) {
             using r_iter = std::sregex_token_iterator;
+            std::string line;
+            std::getline(packets, line);
+            std::istringstream start_line(line);
 
             std::string http_method;
-            packets >> http_method;
+            start_line >> http_method;
             HttpMethod method = parse_http_method(http_method);
 
             //TODO check for the length of the url
             // if it is too long (e.g. more than 8000 symbols (encoded)) return 414 URI Too Long
             //TODO handle url encoding
             std::string url;
-            packets >> url;
+            start_line >> url;
 
             std::string protocol;
-            packets >> protocol;
+            start_line >> protocol;
 
-            std::string line;
             std::multimap<std::string, std::string> headers;
-            std::getline(packets, line);
-            while (!line.empty()) {
-                std::regex colon(R"(:\s+)");
+
+            while (std::getline(packets, line) && !std::regex_match(line, std::regex("\\s+"))) {
+                std::regex colon(":[ \\t]+");
                 std::vector<std::string> header(r_iter(line.begin(), line.end(), colon, -1), r_iter());
                 headers.insert({header[0], header[1]});
-                std::getline(packets, line);
             }
 
             std::string body;
             while (packets) {
+                std::cerr << "in body loop" << std::endl;
                 char byte;
                 packets.read(&byte, 1);
                 if (byte == '\0') {
@@ -178,7 +181,7 @@ namespace detail {
             return HttpRequest(method, url, protocol, headers, body);
         }
 
-        static HttpMethod parse_http_method(std::string_view method) {
+        static HttpMethod parse_http_method(const std::string& method) {
             if (method == "GET") {
                 return HttpMethod::GET;
             }

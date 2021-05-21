@@ -37,7 +37,6 @@ void HttpServer::start() {
         if (!*connection) {
             continue;
         }
-        //[&]() { detail::HandleConnectionJob(std::move(connection), &handlers)(); }
         connection_pool.submit_job(detail::HandleConnectionJob(connection, &handlers));
     }
 }
@@ -78,7 +77,7 @@ std::shared_ptr<detail::Connection> HttpServer::accept_connection() {
             case EPERM:
                 throw socket_exception("Error accepting connection: " + std::string(strerror(errno)));
             default:
-                return std::make_shared<detail::Connection>(-1, connaddr, 0, 0);
+                return std::make_shared<detail::Connection>(-1, connaddr, -1, 0);
         }
     }
     return std::make_shared<detail::Connection>(connfd, connaddr, packet_size, socket_read_timeout_millis);

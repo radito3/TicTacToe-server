@@ -3,14 +3,13 @@
 
 #include <cstring>
 #include <map>
-#include <string_view>
 
 class HttpResponse {
 public:
     class Builder {
         unsigned short status_code = 0;
-        std::multimap<std::string_view, std::string_view> headers;
-        std::string_view body_;
+        std::multimap<std::string, std::string> headers;
+        std::string body_;
 
         friend class HttpResponse;
 
@@ -25,24 +24,18 @@ public:
             return *this;
         }
 
-        Builder& header(std::string_view header_key, std::string_view header_value) {
+        Builder& header(std::string header_key, std::string header_value) {
             headers.insert({header_key, header_value});
             return *this;
         }
 
-        bool contains_header(std::string_view header_key) const {
+        bool contains_header(std::string header_key) const {
             return headers.find(header_key) != headers.end();
         }
 
         Builder& body(const char* data) {
             body_ = data;
             headers.insert({"Content-Length", std::to_string(strlen(data) + 1)});
-            return *this;
-        }
-
-        Builder& body(std::string_view data) {
-            body_ = data;
-            headers.insert({"Content-Length", std::to_string(data.length())});
             return *this;
         }
 
@@ -68,8 +61,8 @@ public:
 
 private:
     unsigned short status_code;
-    std::multimap<std::string_view, std::string_view> headers;
-    std::string_view body;
+    std::multimap<std::string, std::string> headers;
+    std::string body;
 
     explicit HttpResponse(const HttpResponse::Builder& builder) : status_code(builder.status_code),
         headers(builder.headers), body(builder.body_) {}
@@ -98,29 +91,8 @@ public:
         return out;
     }
 
-    char* to_c_str() const {
-        if (status_code == 0) {
-            throw std::runtime_error("Incomplete HTTP response: Status Code missing");
-        }
-        std::stringstream res;
-        res << "HTTP/1.1 " << status_code << ' ' << parse_status_code(status_code) << std::endl;
-        for (const auto& [header_key, header_val] : headers) {
-            res << header_key << ": " << header_val << std::endl;
-        }
-        res << std::endl
-            << body << std::endl;
-
-        std::string res_str = res.str();
-
-        const char* data = res_str.data();
-        size_t data_len = strlen(data);
-        char* result = new char[data_len];
-        std::copy(data, data + data_len, result);
-        return result;
-    }
-
 private:
-    static std::string_view parse_status_code(unsigned short status_code) {
+    static std::string parse_status_code(unsigned short status_code) {
         switch (status_code) {
             case 200:
                 return "OK";
