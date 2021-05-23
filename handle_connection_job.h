@@ -5,12 +5,9 @@
 #include <ranges>
 #include <unordered_map>
 #include <map>
-#include <string_view>
 #include <compare>
 #include <memory>
 #include "connection.h"
-
-#include <iostream>
 
 namespace detail {
     class HandleConnectionJob {
@@ -29,19 +26,18 @@ namespace detail {
             HttpRequest request;
             try {
                 request = connection->receive();
-                std::cerr << "[in handle connection job] request url: " << request.url << std::endl;
             } catch (const std::runtime_error& e) {
                 connection->send_(HttpResponse::new_builder()
-                                         .status(408)
-                                         .build());
+                                          .status(408)
+                                          .build());
                 return;
             }
 
             auto handler = find_request_handler(request);
             if (handler == handlers->end()) {
                 connection->send_(HttpResponse::new_builder()
-                                         .status(404)
-                                         .build());
+                                          .status(404)
+                                          .build());
                 return;
             }
 
@@ -70,6 +66,12 @@ namespace detail {
             connection->send_(response);
         }
 
+        void on_rejected() {
+            connection->send_(HttpResponse::new_builder()
+                                      .status(503)
+                                      .build());
+        }
+
     private:
         template <typename T>
         static std::string to_string(const T& view) {
@@ -78,11 +80,11 @@ namespace detail {
         }
 
         static void remove_leading_trailing_slash(std::string& path) {
-            if (path.find('/') == 0) {
+            if (path.front() == '/') {
                 path.erase(path.begin());
             }
-            if (path.rfind('/') == path.size() - 1) {
-                path.erase(--path.end());
+            if (path.back() == '/') {
+                path.pop_back();
             }
         }
 
@@ -117,12 +119,12 @@ namespace detail {
         static std::multimap<std::string, std::string> extract_query_params(const HttpRequest& request) {
             using r_iter = std::sregex_token_iterator;
 
-            if (request.url.find('?') == std::string_view::npos) {
+            if (request.url.find('?') == std::string::npos) {
                 return {};
             }
             std::string query_url(request.url.substr(request.url.find('?') + 1));
             if (query_url.rfind('#') != std::string::npos) {
-                query_url = query_url.substr(0, query_url.find('#'));
+                query_url = query_url.substr(0, query_url.rfind('#'));
             }
             std::regex query_delims("[&;]");
             std::vector<std::string> query_elems = std::vector<std::string>(r_iter(query_url.begin(), query_url.end(), query_delims, -1), r_iter());
@@ -143,13 +145,12 @@ namespace detail {
         }
 
         static std::string extract_fragment(const HttpRequest& request) {
-            if (request.url.rfind('#') == std::string_view::npos) {
+            if (request.url.rfind('#') == std::string::npos) {
                 return {};
             }
             return request.url.substr(request.url.rfind('#') + 1);
         }
 
-        //FIXME this matches non-fully qualified paths (matcher: /abc ; path: /ab ; match <- shouldn't be)
         static bool path_matches(const RequestMatcher& matcher, const std::string& path) {
             auto strip_trailing_fw_slash = [] (const std::string& str) -> std::string {
                 if (str.size() > 1 && str.back() == '/') {

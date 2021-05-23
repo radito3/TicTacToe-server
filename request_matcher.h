@@ -27,8 +27,9 @@ struct RequestMatcher {
         };
 
         std::string result(path);
-        if (*path.begin() != '/') {
-            result = "/" + result;
+        if (path.front() != '/') {
+            result.reserve(1);
+            result.insert(result.begin(), '/');
         }
         if (result.find('{') == std::string::npos) {
             return result;

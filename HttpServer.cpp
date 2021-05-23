@@ -18,6 +18,7 @@ HttpServer::HttpServer(HttpServer::Config server_config)
 {
     create_tcp_socket();
     bind_socket();
+    connection_pool.set_rejected_job_policy(new ServiceUnavailablePolicy);
 }
 
 HttpServer::~HttpServer() {
@@ -81,4 +82,9 @@ std::shared_ptr<detail::Connection> HttpServer::accept_connection() {
         }
     }
     return std::make_shared<detail::Connection>(connfd, connaddr, packet_size, socket_read_timeout_millis);
+}
+
+void HttpServer::ServiceUnavailablePolicy::handle_rejected_job(const std::function<void()> &job) {
+    auto handle_conn_job = reinterpret_cast<const detail::HandleConnectionJob&>(job);
+    handle_conn_job.on_rejected();
 }

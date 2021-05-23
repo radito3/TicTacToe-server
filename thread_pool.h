@@ -3,8 +3,8 @@
 
 #include <functional>
 #include <thread>
+#include <utility>
 #include <vector>
-#include <tuple>
 #include <queue>
 
 //thread pool should have a rw_lock (a shared_mutex with a shared_lock for read and unique_lock for write)
@@ -16,76 +16,51 @@ public:
 
         virtual void handle_rejected_job(const std::function<void()>&) = 0;
     };
-    //TODO implement default rejection policy
 
     struct Config {
         unsigned task_queue_size;
-        unsigned max_num_threads;
+        unsigned max_threads_num;
         unsigned thread_idle_timeout_millis;
         unsigned initial_thread_num;
-        //TODO add default rejection policy
 
-        Config() : task_queue_size(10), max_num_threads(15), thread_idle_timeout_millis(10 * 60 * 1000),
+        Config() : task_queue_size(10), max_threads_num(15), thread_idle_timeout_millis(10 * 60 * 1000),
                    initial_thread_num(5) {}
     };
 
 private:
-    template<typename Functor, typename... Args>
-    class Task {
-        Functor fn;
-        std::tuple<Args...> args;
+    unsigned num_active_threads = 0;
+    RejectedJobPolicy* rejected_job_policy;
+    std::queue<std::function<void()>> task_queue;
+    std::vector<std::thread> worker_threads;
 
+    class DiscardingPolicy : public RejectedJobPolicy {
     public:
-        Task(Functor fn, const std::tuple<Args...> &args) : fn(fn), args(args) {}
-
-        void operator()() {
-            std::apply(fn, args);
+        void handle_rejected_job(const std::function<void()> &job) override {
+            //NO-OP
         }
     };
 
-    //fields...
-    unsigned num_active_threads = 0;
-
-//    RejectedJobPolicy* rejected_job_policy;
-    //FIXME temporary impl
-    std::vector<std::thread> threads;
-
-//    std::queue<Task> task_queue;
-
 public:
-    explicit ThreadPool(ThreadPool::Config config = {}) {}
+    explicit ThreadPool(ThreadPool::Config config = {}) : rejected_job_policy(new DiscardingPolicy) {}
 
     ~ThreadPool() {
-//        delete rejected_job_policy;
-        //FIXME temporary impl
-        for (auto& th : threads) {
+        delete rejected_job_policy;
+        //send_ stop signal to threads
+        for (auto& th : worker_threads) {
             th.join();
         }
-        //close active connections
-        //reject pending connections
-        //send_ shutdown signal
-        //wait for threads destruction
     }
 
-//    void set_rejected_job_policy(RejectedJobPolicy* policy) {
-//        delete rejected_job_policy;
-//        rejected_job_policy = policy;
-//    }
+    void set_rejected_job_policy(RejectedJobPolicy* policy) {
+        delete rejected_job_policy;
+        rejected_job_policy = policy;
+    }
 
     void submit_job(std::function<void()>&& job) {
-        //FIXME temporary impl
-        threads.emplace_back(std::forward<std::function<void()>>(job));
+        worker_threads.emplace_back(std::forward<std::function<void()>>(job));
         //if rejected
 //        rejected_job_policy->handle_rejected_job(job);
     }
-
-    template<typename Functor, typename... Args>
-    void submit_with_args(Functor&& fn, Args&&... args) {
-        threads.emplace_back(std::forward<Functor>(fn), std::forward<Args>(args)...);
-        auto j = Task(std::forward<Functor>(fn), std::make_tuple(std::forward<Args>(args)...));
-    }
-
-    //public methods...
 
 private:
     //private methods...

@@ -10,7 +10,7 @@ int main() {
                                         });
 
     server.register_handler<HttpMethod::POST>("/search/{search_id}", [](const HttpRequestContext &context) {
-        auto search_id = context.path_params.at("search_id");
+        auto search_id = context.get_path_param("search_id");
         return HttpResponse::new_builder()
                 .status(200)
                 .body(search_id)
@@ -18,8 +18,8 @@ int main() {
     });
 
     server.register_handler<HttpMethod::PUT>("/test/{search_id}/{path_id}", [](const HttpRequestContext &context) {
-        auto search_id = context.path_params.at("search_id");
-        auto path_id = context.path_params.at("path_id");
+        auto search_id = context.get_path_param("search_id");
+        auto path_id = context.get_path_param("path_id");
         return HttpResponse::new_builder()
                 .status(201)
                 .body(std::string(search_id) + "/" + std::string(path_id))
@@ -28,10 +28,11 @@ int main() {
 
     server.register_handler<HttpMethod::GET>("/headers", [](const HttpRequestContext &context) {
         std::string s;
-        for (auto& [h_key, h_val] : context.headers) {
+        for (auto& [h_key, h_val] : context.get_headers()) {
             s += h_key;
             s += ": ";
             s += h_val;
+            s += '\n';
         }
         return HttpResponse::new_builder()
                 .status(202)
@@ -41,10 +42,11 @@ int main() {
 
     server.register_handler<HttpMethod::GET>("/query", [](const HttpRequestContext &context) {
         std::string s;
-        for (auto& [h_key, h_val] : context.query_params) {
-            s += h_key;
+        for (auto& [q_key, q_val] : context.get_query_params()) {
+            s += q_key;
             s += ": ";
-            s += h_val;
+            s += q_val;
+            s += '\n';
         }
         return HttpResponse::new_builder()
                 .status(200)
@@ -55,21 +57,14 @@ int main() {
     server.register_handler<HttpMethod::GET>("/fragment", [](const HttpRequestContext &context) {
         return HttpResponse::new_builder()
                 .status(200)
-                .body(context.fragment)
+                .body(context.get_fragment())
                 .build();
     });
 
     server.register_handler<HttpMethod::POST>("/body", [](const HttpRequestContext &context) {
         return HttpResponse::new_builder()
                 .status(200)
-                .body(context.body)
-                .build();
-    });
-
-    server.register_handler<HttpMethod::POST>("/cl-address", [](const HttpRequestContext &context) {
-        return HttpResponse::new_builder()
-                .status(200)
-                .body(context.client_address)
+                .body(context.get_body())
                 .build();
     });
 

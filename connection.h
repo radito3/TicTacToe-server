@@ -63,14 +63,14 @@ namespace detail {
             return connection_fd >= 0;
         }
 
-        struct sockaddr_in get_connection_address() const {
+        sockaddr_in get_connection_address() const {
             return connection_address;
         }
 
         void send_(const HttpResponse &response) {
             auto res = add_mandatory_headers_to_response(response);
             std::stringstream ss;
-            //TODO if large responses are supported, change the type of the body to a stream
+            //if large responses are supported, change the type of the body to a stream
             // that way, the application memory won't overflow
             // and send data to the socket by buffering a packet-size worth of data and calling
             // ::send(conn_fd, buffer, packet_size, MSG_MORE)
@@ -150,9 +150,9 @@ namespace detail {
             start_line >> http_method;
             HttpMethod method = parse_http_method(http_method);
 
-            //TODO check for the length of the url
+            //check for the length of the url
             // if it is too long (e.g. more than 8000 symbols (encoded)) return 414 URI Too Long
-            //TODO handle url encoding
+            //handle url encoding
             std::string url;
             start_line >> url;
 
@@ -169,7 +169,6 @@ namespace detail {
 
             std::string body;
             while (packets) {
-                std::cerr << "in body loop" << std::endl;
                 char byte;
                 packets.read(&byte, 1);
                 if (byte == '\0') {

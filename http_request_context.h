@@ -53,6 +53,7 @@ public:
         }
     };
 
+private:
     const std::string client_address;
     const std::multimap<std::string, std::string> headers;
     const std::unordered_map<std::string, std::string> path_params;
@@ -60,10 +61,43 @@ public:
     const std::string fragment;
     const std::string body;
 
+public:
     HttpRequestContext() = delete;
 
     static Builder new_builder() {
         return Builder();
+    }
+
+    std::string get_client_address() const {
+        return client_address;
+    }
+
+    std::string get_header(const std::string& key) const {
+        return headers.find(key)->second;
+    }
+
+    std::multimap<std::string, std::string> get_headers() const {
+        return headers;
+    }
+
+    std::string get_path_param(const std::string& path_elem) const {
+        return path_params.find(path_elem)->second;
+    }
+
+    std::string get_query_param(const std::string& param) const {
+        return query_params.find(param)->second;
+    }
+
+    std::multimap<std::string, std::string> get_query_params() const {
+        return query_params;
+    }
+
+    std::string get_fragment() const {
+        return fragment;
+    }
+
+    std::string get_body() const {
+        return body;
     }
 
 private:
