@@ -89,7 +89,7 @@ namespace detail {
         }
 
         static std::string strip_leading_trailing_brace(const std::string& str) {
-            return str.substr(1, str.size() - 1);
+            return str.substr(1, str.size() - 2);
         }
 
         static std::unordered_map<std::string, std::string> extract_path_params(const RequestMatcher& matcher,
@@ -127,7 +127,7 @@ namespace detail {
                 query_url = query_url.substr(0, query_url.rfind('#'));
             }
             std::regex query_delims("[&;]");
-            std::vector<std::string> query_elems = std::vector<std::string>(r_iter(query_url.begin(), query_url.end(), query_delims, -1), r_iter());
+            std::vector<std::string> query_elems(r_iter(query_url.begin(), query_url.end(), query_delims, -1), r_iter());
             std::multimap<std::string, std::string> query_params;
 
             for (auto& query_elem : query_elems) {
@@ -146,12 +146,12 @@ namespace detail {
 
         static std::string extract_fragment(const HttpRequest& request) {
             if (request.url.rfind('#') == std::string::npos) {
-                return {};
+                return "";
             }
             return request.url.substr(request.url.rfind('#') + 1);
         }
 
-        static bool path_matches(const RequestMatcher& matcher, const std::string& path) {
+        static bool path_matches(const RequestMatcher& matcher, HttpMethod method, const std::string& path) {
             auto strip_trailing_fw_slash = [] (const std::string& str) -> std::string {
                 if (str.size() > 1 && str.back() == '/') {
                     return str.substr(0, str.size() - 1);
@@ -159,6 +159,9 @@ namespace detail {
                 return str;
             };
 
+            if (matcher.method != method) {
+                return false;
+            }
             if (std::ranges::count(matcher.path, '/') != std::ranges::count(strip_trailing_fw_slash(path), '/')) {
                 return false;
             }
@@ -185,7 +188,7 @@ namespace detail {
             }
 
             for (const auto& [matcher, handler] : *handlers) {
-                if (path_matches(matcher, path)) {
+                if (path_matches(matcher, request.http_method, path)) {
                     return handlers->find(matcher);
                 }
             }

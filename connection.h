@@ -77,7 +77,7 @@ namespace detail {
             ss << res;
             std::string res_str = ss.str();
             const char* data = res_str.data();
-            ssize_t data_len = strlen(data);
+            ssize_t data_len = strlen(data) + 1;
 
             char* result = new char[data_len];
             strcpy(result, data);
@@ -141,7 +141,6 @@ namespace detail {
         }
 
         static HttpRequest parse_http_request(std::istream& packets) {
-            using r_iter = std::sregex_token_iterator;
             std::string line;
             std::getline(packets, line);
             std::istringstream start_line(line);
@@ -162,9 +161,11 @@ namespace detail {
             std::multimap<std::string, std::string> headers;
 
             while (std::getline(packets, line) && !std::regex_match(line, std::regex("\\s+"))) {
-                std::regex colon(":[ \\t]+");
-                std::vector<std::string> header(r_iter(line.begin(), line.end(), colon, -1), r_iter());
-                headers.insert({header[0], header[1]});
+                std::regex header_regex(R"(^([-A-Za-z]+):[ \t]+(\S+)$)");
+                std::smatch header_match;
+                if (std::regex_search(line, header_match, header_regex)) {
+                    headers.insert({header_match[1], header_match[2]});
+                }
             }
 
             std::string body;
@@ -176,7 +177,6 @@ namespace detail {
                 }
                 body += byte;
             }
-
             return HttpRequest(method, url, protocol, headers, body);
         }
 

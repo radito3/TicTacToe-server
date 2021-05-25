@@ -19,7 +19,7 @@ public:
 
     public:
         Builder& client_address(std::string address) {
-            client_address_ = address;
+            client_address_ = std::move(address);
             return *this;
         }
 
@@ -39,12 +39,12 @@ public:
         }
 
         Builder& fragment(std::string fragment) {
-            fragment_ = fragment;
+            fragment_ = std::move(fragment);
             return *this;
         }
 
         Builder& body(std::string body) {
-            body_ = body;
+            body_ = std::move(body);
             return *this;
         }
 

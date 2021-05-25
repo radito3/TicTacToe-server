@@ -13,7 +13,7 @@ struct HttpRequest {
 
     HttpRequest() = default;
 
-    HttpRequest(const HttpMethod httpMethod, const std::string &url, const std::string &aProtocol,
+    HttpRequest(HttpMethod httpMethod, const std::string &url, const std::string &aProtocol,
                 std::multimap<std::string, std::string> headers, const std::string &body)
             : http_method(httpMethod), url(url), protocol(aProtocol), headers(std::move(headers)), body(body) {}
 };

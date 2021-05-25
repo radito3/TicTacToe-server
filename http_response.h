@@ -40,14 +40,14 @@ public:
         }
 
         Builder& body(std::string&& data) {
-            headers.insert({"Content-Length", std::to_string(data.length())});
+            headers.insert({"Content-Length", std::to_string(data.length() + 1)});
             body_ = std::move(data);
             return *this;
         }
 
         Builder& body(const std::string& data) {
             body_ = data;
-            headers.insert({"Content-Length", std::to_string(data.length())});
+            headers.insert({"Content-Length", std::to_string(data.length() + 1)});
             return *this;
         }
 
@@ -86,8 +86,10 @@ public:
         for (const auto& [header_key, header_val] : response.headers) {
             out << header_key << ": " << header_val << std::endl;
         }
-        out << std::endl
-            << response.body << std::endl;
+        out << std::endl;
+        if (response.body.size() > 1) {
+            out << response.body;
+        }
         return out;
     }
 
