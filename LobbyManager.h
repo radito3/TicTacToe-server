@@ -48,7 +48,7 @@ public:
 		return false;
 	}
 	 
-	std::tuple<PlayerInfo, PlayerInfo, unsigned > get_lobby_with_id(unsigned id) {
+	std::tuple<PlayerInfo, PlayerInfo, unsigned> get_lobby_with_id(unsigned id) {
 		if (active_lobbies.find(id) == active_lobbies.end()) {
 			throw std::runtime_error("No active lobby with this ID");
 		} 
