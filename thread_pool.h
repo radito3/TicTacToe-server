@@ -31,32 +31,39 @@ public:
     };
 
 private:
+    RejectedJobPolicy* rejected_job_policy;
     unsigned num_active_threads = 0;
-    //RejectedJobPolicy* rejected_job_policy;
-    //FIXME temporary impl
-    std::vector<std::thread> threads;
-    //bool stoping = false;
-    //std::condition_variable event_var;
-    //std::mutex event_mutex;
-    //std::queue <std::function<void()>>  task_queue;
-    unsigned task_queue_size;
+    std::vector<std::thread> worker_threads;
+    bool stopping = false;
+    std::condition_variable empty_cond;
+    std::mutex event_mutex;
+    std::queue <std::function<void()>> task_queue;
+    unsigned task_queue_size = 0;
 
 public:
-    explicit ThreadPool(ThreadPool::Config config = {}) : task_queue_size(config.task_queue_size) {
-    } //TODO implement
+    explicit ThreadPool(ThreadPool::Config config = {}) : task_queue_size(config.task_queue_size), num_active_threads(config.initial_thread_num) { 
+        initialize(num_active_threads);
+    }
 
     ~ThreadPool() {
-        delete rejected_job_policy;
-        //send_ stop signal to threads
+        stopping = true;
+            
+        while(!task_queue.empty()) {
+            auto &task = task_queue.front();
+            rejected_job_policy->handle_rejected_job(task);
+            task_queue.pop();
+        }
+
+        for(int i = 0 ; i < num_active_threads ; i++){
+            task_queue.emplace_back([]() {});
+            empty_cond.notify_all();
+        }
+
         for (auto& th : worker_threads) {
             th.join();
         }
-        //stop();
 
-        //close active connections
-        //reject pending connections
-        //send shutdown signal
-        //wait for threads destruction
+        delete rejected_job_policy;
     }
 
     void set_rejected_job_policy(RejectedJobPolicy* policy) {
@@ -65,17 +72,39 @@ public:
     }
 
     void submit_job(std::function<void()>&& job) {
-        threads.emplace_back(std::forward<std::function<void()>>(job));
-        /*
-        }
-        else {
+        if(task_queue.size() < task_queue_size) {
+            std::unique_lock<std::mutex> lock{event_mutex};
+            task_queue.emplace_back(std::forward<std::function<void()>>(job));
+            empty_cond.notify_one();
+        } else {
             rejected_job_policy->handle_rejected_job(job);
-        }*/
+        }
     }
 
 private:
-    //private methods...
 
+    void initialize(std::size_t number_of_threads) {
+        for (int i = 0 ; i < number_of_threads ; i++) {
+            worker_threads.emplace_back(thread_work);
+        }
+    }
+
+    void thread_work() {
+        while (!stopping) {
+            std::unique_lock<std::mutex> lock{event_mutex};
+            empty_cond.wait(lock, []() { return !task_queue.empty(); });
+            auto &job = task_queue.front();
+
+            try {
+                job();
+            } catch (const std::runtime_error& e) {
+                std::cerr << e.what() << std::endl;
+                rejected_job_policy->handle_rejected_job(job);
+            }
+            
+            task_queue.pop();
+        }
+    }
 };
 
 #endif //TICTACTOE_SERVER_THREAD_POOL_H
