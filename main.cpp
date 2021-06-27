@@ -4,6 +4,7 @@
 #include "PlayerInfo.h"
 #include "GameSessionsManager.h"
 #include <regex>
+#include <string>
 
 int main() {
     HttpServer server;
@@ -71,11 +72,11 @@ int main() {
         PlayerInfo player(player_id, player_address);
 
         if(!search_manager.check_for_active_search(player)) {
-            auto [search_id, _] = search_manager.get_player_info_with_search_id(player);
+            auto [search_id, _] = search_manager.get_player_info_with_search_id();
 
             return HttpResponse::new_builder()
                                 .status(201)
-                                .body(search_id)
+                                .body(std::to_string(search_id))
                                 .build();
         }
 
@@ -85,7 +86,7 @@ int main() {
 
         return HttpResponse::new_builder()
                 .status(200)
-                .body(search_id)
+                .body(std::to_string(search_id))
                 .build();
     });
 
@@ -99,7 +100,7 @@ int main() {
                                 .build();
         }
 
-        auto [player1, player2, lobby_id] = lobby_manager.get_lobby_with_id(search_id);
+        auto [player1, player2, lobby_id] = lobby_manager.get_lobby_with_id(std::stoul(search_id));
         game_sessions_manager.start_game_session(player1, player2);
         lobby_manager.erase_first_active_lobby();
         

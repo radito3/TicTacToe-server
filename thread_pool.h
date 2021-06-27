@@ -9,6 +9,7 @@
 #include <queue>
 #include <future>
 #include <condition_variable>
+#include <iostream>
 
 //thread pool should have a rw_lock (a shared_mutex with a shared_lock for read and unique_lock for write)
 class ThreadPool {
@@ -32,13 +33,13 @@ public:
 
 private:
     RejectedJobPolicy* rejected_job_policy;
-    unsigned num_active_threads = 0;
+    unsigned num_active_threads;
     std::vector<std::thread> worker_threads;
     bool stopping = false;
     std::condition_variable empty_cond;
     std::mutex event_mutex;
     std::queue <std::function<void()>> task_queue;
-    unsigned task_queue_size = 0;
+    unsigned task_queue_size;
 
 public:
     explicit ThreadPool(ThreadPool::Config config = {}) : task_queue_size(config.task_queue_size), num_active_threads(config.initial_thread_num) { 
@@ -55,7 +56,7 @@ public:
         }
 
         for(int i = 0 ; i < num_active_threads ; i++){
-            task_queue.emplace_back([]() {});
+            task_queue.emplace([]() {});
             empty_cond.notify_all();
         }
 
@@ -74,7 +75,7 @@ public:
     void submit_job(std::function<void()>&& job) {
         if(task_queue.size() < task_queue_size) {
             std::unique_lock<std::mutex> lock{event_mutex};
-            task_queue.emplace_back(std::forward<std::function<void()>>(job));
+            task_queue.emplace(std::forward<std::function<void()>>(job));
             empty_cond.notify_one();
         } else {
             rejected_job_policy->handle_rejected_job(job);
@@ -83,16 +84,16 @@ public:
 
 private:
 
-    void initialize(std::size_t number_of_threads) {
-        for (int i = 0 ; i < number_of_threads ; i++) {
-            worker_threads.emplace_back(thread_work);
+    void initialize(unsigned number_of_threads) {
+        for (unsigned i = 0 ; i < number_of_threads ; i++) {
+            worker_threads.emplace_back(&ThreadPool::thread_work, this);
         }
     }
 
     void thread_work() {
         while (!stopping) {
             std::unique_lock<std::mutex> lock{event_mutex};
-            empty_cond.wait(lock, []() { return !task_queue.empty(); });
+            empty_cond.wait(lock, [&]() { return !task_queue.empty(); });
             auto &job = task_queue.front();
 
             try {
