@@ -6,7 +6,6 @@
 struct PlayerInfo {
 	std::string id;
 	std::string address;
-	bool is_active;
 };
 
 #endif

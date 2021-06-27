@@ -11,11 +11,11 @@ class SearchManager {
 
 public:
 	
-	bool check_for_active_search( PlayerInfo player) {
+	bool check_for_active_search(PlayerInfo player) {
 		if (active_searches.empty()) {
 			active_searches[std::mt19937(std::random_device()())()] = player ;
 			return false;
-		} 
+		}
 		return true;
 	}
 

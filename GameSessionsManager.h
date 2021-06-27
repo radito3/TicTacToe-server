@@ -1,9 +1,9 @@
 #ifndef TICTACTOE_GAMESESSIONSMANAGER_H
 #define TICTACTOE_GAMESESSIONSMANAGER_H
 
-#include <thread_pool.h>
-#include <GrpcDelegatingWriter.h>
-#include <GrpcDelegatingReader.h>
+#include "thread_pool.h"
+#include "io/GrpcDelegatingWriter.h"
+#include "io/GrpcDelegatingReader.h"
 #include <Player.h>
 #include "PlayerInfo.h"
 #include <GameSession.h>
