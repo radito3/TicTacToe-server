@@ -17,6 +17,8 @@
 
 namespace detail {
 
+    static const int URL_LENGTH_LIMIT = 8000;
+
     class Connection {
         int connection_fd;
         struct sockaddr_in connection_address;
@@ -26,7 +28,12 @@ namespace detail {
     public:
         Connection(int connFd, struct sockaddr_in connAddress, long packetSize,
                 unsigned long socket_read_timeout_millis) : connection_fd(connFd), connection_address(connAddress),
-                packet_size(packetSize), socket_read_timeout_millis(socket_read_timeout_millis) {}
+                packet_size(packetSize), socket_read_timeout_millis(socket_read_timeout_millis) {
+            struct timeval timeout{};
+            timeout.tv_sec = (long) socket_read_timeout_millis / 1000;
+            timeout.tv_usec = (long) (socket_read_timeout_millis % 1000) * 1000;
+            setsockopt(connection_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+        }
 
         ~Connection() {
             if (connection_fd >= 0) {
@@ -67,7 +74,7 @@ namespace detail {
             return connection_address;
         }
 
-        void send_(const HttpResponse &response) {
+        void send_response(const HttpResponse &response) {
             auto res = add_mandatory_headers_to_response(response);
             std::stringstream ss;
             //if large responses are supported, change the type of the body to a stream
@@ -77,7 +84,7 @@ namespace detail {
             ss << res;
             std::string res_str = ss.str();
             const char* data = res_str.data();
-            ssize_t data_len = strlen(data) + 1;
+            size_t data_len = strlen(data) + 1;
 
             char* result = new char[data_len];
             strcpy(result, data);
@@ -91,55 +98,75 @@ namespace detail {
             delete [] result;
         }
 
-        HttpRequest receive() {
-            bool success = try_receive();
-            if (!success) {
-                throw std::runtime_error("socket read timeout");
-            }
-
-            std::stringstream packets;
-            ssize_t bytes_received = -1;
+        std::tuple<HttpMethod, std::string> read_method_and_path() {
+            ssize_t bytes_received;
             char packet[packet_size];
             memset(packet, '\0', sizeof(packet));
 
-            log("Receiving data from connection with fd ", connection_fd, "...");
-            while ((bytes_received = recv(connection_fd, (void *) packet, packet_size, 0)) != -1) {
-                if (bytes_received == 0) { //EOF
-                    break;
-                }
-                //we first need to examine the start of the request (start-line + headers),
-                // determine what to do,
-                // then decide whether we need to read more (i.e. rest of body)
-                // if not, we need to free the memory that the body takes
+            log("Reading data from connection with fd ", connection_fd, "...");
+            bytes_received = recv(connection_fd, (void *) packet, packet_size, MSG_PEEK);
+            if (bytes_received == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+                //TODO make a custom timeout error class
+                // so that we can return a 408 Request Timeout
+                throw std::runtime_error("Connection timed out");
+            }
+            if (bytes_received == 0) {
+                throw std::runtime_error("Connection didn't send any data");
+            }
+
+            size_t line_length = strcspn(packet, "\r\n");
+            if (line_length == packet_size) {
+                //read more data until configured URI length limit
+            }
+
+            if (line_length >= URL_LENGTH_LIMIT) {
+                //TODO make a custom 414 error class
+                throw std::runtime_error("Request Too Long");
+            }
+
+            //TODO truncate packet or push to a stringstream until only the method and the path are in memory
+            // parse them
+            char line[line_length]; //maybe use string?
+            strncpy(line, packet, line_length);
+
+            size_t method_length = strcspn(line, " ");
+            std::string method_raw(line, method_length);
+            HttpMethod method = parse_http_method(method_raw);
+
+            size_t url_length = strcspn(line + method_length + 1, " ");
+            std::string url(line + method_length + 1, url_length - method_length - 1);
+
+            return {method, url};
+        }
+
+        HttpRequest read_request() {
+            std::stringstream packets;
+            ssize_t bytes_received;
+            char packet[packet_size];
+            memset(packet, '\0', sizeof(packet));
+
+            log("Reading data from connection with fd ", connection_fd, "...");
+            while ((bytes_received = recv(connection_fd, (void *) packet, packet_size, 0)) > 0) {
                 packets << packet;
                 if (bytes_received < packet_size) {
                     break;
                 }
                 memset(packet, '\0', sizeof(packet));
             }
+
+            if (bytes_received == -1) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    //TODO make a custom timeout error class
+                    // so that we can return a 408 Request Timeout
+                    throw std::runtime_error("Connection timed out");
+                }
+                //handle other recv errors
+            }
             log("Data received");
             return parse_http_request(packets);
         }
 
     private:
-        bool try_receive() const {
-            std::condition_variable timer;
-            std::mutex t_mutex;
-
-            std::thread recv_th([&timer, this]() {
-                char packet[packet_size];
-                recv(connection_fd, (void *) packet, packet_size, MSG_PEEK);
-                timer.notify_one();
-            });
-            recv_th.detach();
-
-            std::unique_lock<std::mutex> lock(t_mutex);
-            if (timer.wait_for(lock, std::chrono::milliseconds(socket_read_timeout_millis)) == std::cv_status::timeout) {
-                return false;
-            }
-            return true;
-        }
-
         static HttpRequest parse_http_request(std::istream& packets) {
             std::string line;
             std::getline(packets, line);
@@ -160,6 +187,7 @@ namespace detail {
 
             std::multimap<std::string, std::string> headers;
 
+            //TODO simplify to splitting on : and assigning the keys and values
             while (std::getline(packets, line) && !std::regex_match(line, std::regex("\\s+"))) {
                 std::regex header_regex(R"(^([-A-Za-z]+):[ \t]+(\S+)$)");
                 std::smatch header_match;
@@ -168,6 +196,9 @@ namespace detail {
                 }
             }
 
+            //TODO make this read lazy
+            // only invoke this logic if the handler calls request.get_body()
+            // and change to read from socket on-demand because currently the whole body is loaded in memory
             std::string body;
             while (packets) {
                 char byte;
@@ -211,6 +242,7 @@ namespace detail {
             throw std::runtime_error("Invalid HTTP method");
         }
 
+        //these aren't really mandatory....
         static HttpResponse add_mandatory_headers_to_response(const HttpResponse &response) {
             auto result = HttpResponse::copy_from(response);
 

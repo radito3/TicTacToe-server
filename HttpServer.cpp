@@ -27,12 +27,15 @@ HttpServer::~HttpServer() {
     log("Socket closed");
 }
 
+//TODO register signal handler for SIGTERM
 void HttpServer::start() {
     if (listen(socket_fd, socket_connection_queue_size) != 0) {
         throw socket_exception("Error listening on socket: " + std::string(strerror(errno)));
     }
     log("Listening for connections...");
 
+    //TODO change this to be cancellable
+    // either from an OS signal or from an endpoint
     while (true) {
         auto connection = accept_connection();
         if (!*connection) {

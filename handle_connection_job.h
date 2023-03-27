@@ -20,24 +20,33 @@ namespace detail {
                 : connection(std::move(conn)), handlers(handlers) {}
 
         void operator()() {
+            //wrap this in a try-catch block
+            auto [method, path] = connection->read_method_and_path();
+
+            auto [match_err, handler] = find_request_handler(method, path);
+            if (handler == nullptr) {
+                if (match_err.path_not_found) {
+                    connection->send_response(HttpResponse::new_builder()
+                                                      .status(404) //Not Found
+                                                      .build());
+                    return;
+                }
+                connection->send_response(HttpResponse::new_builder()
+                                                  .status(405) //Method Not Allowed
+                                                  .build());
+                return;
+            }
+
             //when persistent connection support is added,
             // change this to read and write in a loop on a separate thread
             // (which internally reads from and sends to socket in coroutines)
             HttpRequest request;
             try {
-                request = connection->receive();
+                request = connection->read_request();
             } catch (const std::runtime_error& e) {
-                connection->send_(HttpResponse::new_builder()
-                                          .status(408)
-                                          .build());
-                return;
-            }
-
-            auto handler = find_request_handler(request);
-            if (handler == handlers->end()) {
-                connection->send_(HttpResponse::new_builder()
-                                          .status(404)
-                                          .build());
+                connection->send_response(HttpResponse::new_builder()
+                                                  .status(408)
+                                                  .build());
                 return;
             }
 
@@ -48,28 +57,28 @@ namespace detail {
             auto context = HttpRequestContext::new_builder()
                     .client_address(std::string(conn_address) + ":" + std::to_string(connection_port))
                     .headers(request.headers)
-                    .path_params(extract_path_params(handler->first, request))
+                    .path_params(extract_path_params(request))
                     .query_params(extract_query_params(request))
                     .fragment(extract_fragment(request))
-                    .body(request.body)
+                    .body(request.body) //change to body reader
                     .build();
 
             HttpResponse response;
             try {
-                response = handler->second(context);
+                response = handler(context);
             } catch (const std::runtime_error& e) {
                 response = HttpResponse::new_builder()
                         .status(500)
                         .body(e.what())
                         .build();
             }
-            connection->send_(response);
+            connection->send_response(response);
         }
 
         void on_rejected() {
-            connection->send_(HttpResponse::new_builder()
-                                      .status(503)
-                                      .build());
+            connection->send_response(HttpResponse::new_builder()
+                                              .status(503)
+                                              .build());
         }
 
     private:
@@ -92,13 +101,12 @@ namespace detail {
             return str.substr(1, str.size() - 2);
         }
 
-        static std::unordered_map<std::string, std::string> extract_path_params(const RequestMatcher& matcher,
-                                                                                const HttpRequest& request) {
-            if (matcher.path.find('{') == std::string::npos) {
+        static std::unordered_map<std::string, std::string> extract_path_params(const HttpRequest& request) {
+            if (request.url.find('{') == std::string::npos) {
                 return {};
             }
-            std::string matcher_path(matcher.path);
-            std::string request_url(request.url);
+            std::string matcher_path(request.url);
+            std::string request_url(request.raw_url);
             remove_leading_trailing_slash(matcher_path);
             remove_leading_trailing_slash(request_url);
 
@@ -109,7 +117,7 @@ namespace detail {
             for (auto url_it = url_elems.begin(); const auto& path_view : path_elems) {
                 auto path_elem = to_string(path_view);
                 if (path_elem.find('{') != std::string::npos) {
-                    path_params.insert({ strip_leading_trailing_brace(path_elem), to_string(*url_it) });
+                    path_params.emplace(strip_leading_trailing_brace(path_elem), to_string(*url_it));
                 }
                 ++url_it;
             }
@@ -151,7 +159,14 @@ namespace detail {
             return request.url.substr(request.url.rfind('#') + 1);
         }
 
-        static bool path_matches(const RequestMatcher& matcher, HttpMethod method, const std::string& path) {
+        struct match_error {
+            bool path_not_found;
+            bool method_not_allowed;
+        };
+
+        //try to simplify this?
+        //rename this
+        static match_error* path_matches(const RequestMatcher& matcher, HttpMethod method, const std::string& path) {
             auto strip_trailing_fw_slash = [] (const std::string& str) -> std::string {
                 if (str.size() > 1 && str.back() == '/') {
                     return str.substr(0, str.size() - 1);
@@ -159,11 +174,8 @@ namespace detail {
                 return str;
             };
 
-            if (matcher.method != method) {
-                return false;
-            }
             if (std::ranges::count(matcher.path, '/') != std::ranges::count(strip_trailing_fw_slash(path), '/')) {
-                return false;
+                return new match_error{true, false};
             }
             auto matcher_parts = matcher.path | std::views::split('/');
             auto path_parts = path | std::views::split('/');
@@ -171,15 +183,17 @@ namespace detail {
             for (auto path_it = std::ranges::begin(path_parts); const auto& matcher_part_view : matcher_parts) {
                 std::string matcher_part = to_string(matcher_part_view);
                 if (matcher_part.find('{') == std::string::npos && (matcher_part <=> to_string(*path_it)) != 0) {
-                    return false;
+                    return new match_error{true, false};
                 }
                 ++path_it;
             }
-            return true;
+            if (matcher.method != method) {
+                return new match_error{false, true};
+            }
+            return nullptr;
         }
 
-        auto find_request_handler(const HttpRequest &request) const -> handlers_map::const_iterator {
-            std::string path(request.url);
+        auto find_request_handler(HttpMethod method, std::string path) -> std::tuple<match_error, std::function<HttpResponse(const HttpRequestContext &)>> {
             if (path.find('?') != std::string::npos) {
                 path.erase(path.find('?'));
             }
@@ -188,11 +202,15 @@ namespace detail {
             }
 
             for (const auto& [matcher, handler] : *handlers) {
-                if (path_matches(matcher, request.http_method, path)) {
-                    return handlers->find(matcher);
+                auto* match_err = path_matches(matcher, method, path);
+                //rework this
+                // if there is a matched path but disallowed method, return, rather than continuing the loop
+                if (!match_err) {
+                    return {{}, handler};
                 }
+                delete match_err;
             }
-            return handlers->end();
+            return {{true, true}, nullptr};
         }
     };
 }

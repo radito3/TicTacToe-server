@@ -6,7 +6,8 @@
 
 struct HttpRequest {
     HttpMethod http_method;
-    std::string url;
+    std::string url; //make this the url with the placeholders
+    std::string raw_url{}; //and this will be the literal url
     std::string protocol;
     std::multimap<std::string, std::string> headers;
     std::string body;

@@ -1,7 +1,6 @@
 #ifndef TICTACTOE_SERVER_REQUEST_MATCHER_H
 #define TICTACTOE_SERVER_REQUEST_MATCHER_H
 
-#include <sstream>
 #include <regex>
 #include "http_methods.h"
 
@@ -19,32 +18,33 @@ struct RequestMatcher {
         }
     }
 
+    //TODO simplify this to just use std::regex_replace with \{.+} -> \*
     std::string normalize_path() const {
-        auto to_string = []<typename T> (const T& view) -> std::string {
-            auto common = view | std::views::common;
-            return std::string(common.begin(), common.end());
-        };
+//        auto to_string = []<typename T> (const T& view) -> std::string {
+//            auto common = view | std::views::common;
+//            return std::string(common.begin(), common.end());
+//        };
 
         std::string result(path);
-        if (path.front() != '/') {
-            result.reserve(1);
-            result.insert(result.begin(), '/');
-        }
-        if (result.find('{') == std::string::npos) {
-            return result;
-        }
-        std::stringstream ss;
-        for (const auto& view : result | std::views::split('/')) {
-            std::string path_part = to_string(view);
-            if (path_part.find('{') != std::string::npos) {
-                ss << "*";
-            } else {
-                ss << path_part;
-            }
-            ss << '/';
-        }
-        result = ss.str();
-        result.pop_back();
+//        if (path.front() != '/') {
+//            result.reserve(1);
+//            result.insert(result.begin(), '/');
+//        }
+//        if (result.find('{') == std::string::npos) {
+//            return result;
+//        }
+//        std::stringstream ss;
+//        for (const auto& view : result | std::views::split('/')) {
+//            std::string path_part = to_string(view);
+//            if (path_part.find('{') != std::string::npos) {
+//                ss << "*";
+//            } else {
+//                ss << path_part;
+//            }
+//            ss << '/';
+//        }
+//        result = ss.str();
+//        result.pop_back();
         return result;
     }
 };

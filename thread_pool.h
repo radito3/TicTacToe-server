@@ -12,6 +12,7 @@
 #include <iostream>
 
 //thread pool should have a rw_lock (a shared_mutex with a shared_lock for read and unique_lock for write)
+//TODO rework this
 class ThreadPool {
 public:
     class RejectedJobPolicy {
@@ -42,23 +43,23 @@ private:
     unsigned task_queue_size;
 
 public:
-    explicit ThreadPool(ThreadPool::Config config = {}) : task_queue_size(config.task_queue_size), num_active_threads(config.initial_thread_num) { 
+    explicit ThreadPool(ThreadPool::Config config = {}) : task_queue_size(config.task_queue_size), num_active_threads(config.initial_thread_num) {
         initialize(num_active_threads);
     }
 
     ~ThreadPool() {
         stopping = true;
-            
+
         while(!task_queue.empty()) {
             auto &task = task_queue.front();
             rejected_job_policy->handle_rejected_job(task);
             task_queue.pop();
         }
 
-        for(int i = 0 ; i < num_active_threads ; i++){
-            task_queue.emplace([]() {});
-            empty_cond.notify_all();
-        }
+//        for(int i = 0 ; i < num_active_threads ; i++){
+//            task_queue.emplace([]() {});
+//            empty_cond.notify_all();
+//        }
 
         for (auto& th : worker_threads) {
             th.join();
@@ -100,9 +101,10 @@ private:
                 job();
             } catch (const std::runtime_error& e) {
                 std::cerr << e.what() << std::endl;
-                rejected_job_policy->handle_rejected_job(job);
+                //this isn't a "rejected" job
+//                rejected_job_policy->handle_rejected_job(job);
             }
-            
+
             task_queue.pop();
         }
     }

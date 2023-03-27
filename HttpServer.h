@@ -26,7 +26,7 @@ public:
         unsigned long socket_read_timeout_millis;
         ThreadPool::Config th_pool_config;
 
-        Config() : packet_size(52), socket_connection_queue_size(10), socket_read_timeout_millis(30 * 1000) {}
+        Config() : packet_size(512), socket_connection_queue_size(12), socket_read_timeout_millis(30 * 1000) {}
     };
 
 private:
@@ -59,7 +59,7 @@ public:
         if (strlen(path) == 0) {
             throw std::runtime_error("path can't be empty");
         }
-        handlers.insert({RequestMatcher(Method, path), std::move(handler)});
+        handlers.emplace(RequestMatcher(Method, path), std::move(handler));
     }
 
 private:
